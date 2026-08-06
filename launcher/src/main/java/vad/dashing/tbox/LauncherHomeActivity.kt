@@ -17,6 +17,7 @@ import vad.dashing.tbox.ui.launcher.LauncherOverlayElevator
 import vad.dashing.tbox.ui.launcher.LauncherAboutOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherAppDrawerWindow
 import vad.dashing.tbox.ui.launcher.LauncherAppListVersion
+import vad.dashing.tbox.ui.launcher.LauncherAppPickerOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
 import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
 import vad.dashing.tbox.ui.launcher.dismissForeignFreeformTasks
@@ -97,6 +98,7 @@ class LauncherHomeActivity : ComponentActivity() {
 
     override fun onDestroy() {
         LauncherAppDrawerWindow.hide()
+        LauncherAppPickerOverlayWindow.hide()
         LauncherVehicleSettingsOverlayWindow.hide()
         LauncherAboutOverlayWindow.hide()
         runCatching { dismissForeignFreeformTasks(this) }

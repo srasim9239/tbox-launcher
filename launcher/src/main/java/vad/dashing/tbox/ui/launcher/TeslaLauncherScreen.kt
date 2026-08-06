@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -67,6 +69,7 @@ fun TeslaLauncherScreen(
         LauncherVehicleAlertsRepository.ensureActive()
         onDispose {
             LauncherAppDrawerWindow.hide()
+            LauncherAppPickerOverlayWindow.hide()
             LauncherVehicleBodyRepository.stopPolling()
             LauncherAdasRepository.stop()
             LauncherVehicleAlertsRepository.stop()
@@ -221,7 +224,7 @@ fun TeslaLauncherScreen(
                         },
                         onOpenVehicleSettings = openVehicleSettings,
                         configRevision = configRevision,
-                        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
+                        modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
                     )
                 }
             }
@@ -249,7 +252,7 @@ fun TeslaLauncherScreen(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .zIndex(60f)
-                            .windowInsetsPadding(WindowInsets.navigationBars),
+                            .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
                     ) {
                         LauncherBottomBar(
                             canViewModel = canViewModel,

@@ -81,6 +81,22 @@ internal fun tryLaunchInFreeformBounds(
     return tryLaunchIntentInBounds(context, packageName, intent, bounds)
 }
 
+/**
+ * Launch a system settings screen (resolved to a concrete component) into the shared
+ * freeform zone, so permission dialogs float next to other freeform apps.
+ */
+internal fun tryLaunchSettingsIntentInFreeform(
+    context: Context,
+    intent: Intent,
+): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+    if (!isFreeformEnabled(context)) return false
+    val resolved = intent.resolveActivity(context.packageManager) ?: return false
+    val bounds = LauncherEmbeddedBoundsState.embeddedBounds() ?: return false
+    val targeted = Intent(intent).apply { component = resolved }
+    return tryLaunchIntentInBounds(context, resolved.packageName, targeted, bounds)
+}
+
 internal fun tryLaunchIntentInBounds(
     context: Context,
     packageName: String,

@@ -973,6 +973,28 @@ private fun LauncherNavHintsSettingsBlock() {
     val settingsManager = remember(context) { SettingsManager(context.applicationContext) }
     val enabled by settingsManager.launcherNavHintsEnabledFlow.collectAsStateWithLifecycle(false)
     var permissionTick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.DisposableEffect(context) {
+        val resolver = context.contentResolver
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val observer = object : android.database.ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                permissionTick++
+            }
+        }
+        resolver.registerContentObserver(
+            android.provider.Settings.Secure.getUriFor("enabled_notification_listeners"),
+            false,
+            observer,
+        )
+        resolver.registerContentObserver(
+            android.provider.Settings.Secure.getUriFor(
+                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ),
+            false,
+            observer,
+        )
+        onDispose { resolver.unregisterContentObserver(observer) }
+    }
     val listenerComponent = remember {
         android.content.ComponentName(
             context,
@@ -1034,19 +1056,6 @@ private fun LauncherNavHintsSettingsBlock() {
     }
 }
 
-private fun isNotificationListenerEnabled(
-    context: android.content.Context,
-    component: android.content.ComponentName,
-): Boolean {
-    val flat = android.provider.Settings.Secure.getString(
-        context.contentResolver,
-        "enabled_notification_listeners",
-    ).orEmpty()
-    return flat.split(':')
-        .mapNotNull { android.content.ComponentName.unflattenFromString(it) }
-        .any { it == component }
-}
-
 private fun isAccessibilityServiceEnabled(
     context: android.content.Context,
     componentFlat: String,
@@ -1059,19 +1068,15 @@ private fun isAccessibilityServiceEnabled(
 }
 
 private fun openNotificationListenerSettings(context: android.content.Context) {
-    runCatching {
-        context.startActivity(
-            android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
-    }
+    launchSystemSettingsInFreeform(
+        context,
+        android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
+    )
 }
 
 private fun openAccessibilitySettings(context: android.content.Context) {
-    runCatching {
-        context.startActivity(
-            android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
-    }
+    launchSystemSettingsInFreeform(
+        context,
+        android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS),
+    )
 }

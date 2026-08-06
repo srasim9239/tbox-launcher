@@ -87,7 +87,7 @@ internal object LauncherAboutOverlayWindow {
         ).apply {
             gravity = Gravity.CENTER
             dimAmount = 0.55f
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
         val updateViewModel = ViewModelProvider(
@@ -128,7 +128,8 @@ internal object LauncherAboutOverlayWindow {
                         LauncherSettingsScreen(
                             updateViewModel = updateViewModel,
                             onOpenInstallPermissionSettings = {
-                                activity.startActivity(
+                                launchSystemSettingsInFreeform(
+                                    activity,
                                     InstallPermissionHelper.createUnknownSourcesSettingsIntent(activity),
                                 )
                             },

@@ -177,9 +177,9 @@ def run_gradle(project_dir: Path, tasks: tuple[str, ...]) -> None:
             ["wslpath", "-w", str(project_dir)],
             text=True,
         ).strip()
-        command = ["cmd.exe", "/c", "gradlew.bat", *tasks]
-        print(f"Running (WSL->cmd): {' '.join(command)} in {win_dir}")
-        subprocess.run(command, cwd=win_dir, check=True)
+        win_cmd = f'cd /d {win_dir} && gradlew.bat {" ".join(tasks)}'
+        print(f"Running (WSL->cmd): cmd.exe /c {win_cmd}")
+        subprocess.run(["cmd.exe", "/c", win_cmd], check=True)
         return
     command = [str(wrapper), *tasks]
     print(f"Running: {' '.join(command)}")

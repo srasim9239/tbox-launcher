@@ -121,6 +121,7 @@
             android:exported="true"
             android:label="@string/launcher_standalone_app_name"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustNothing"
             android:resizeableActivity="false"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden"

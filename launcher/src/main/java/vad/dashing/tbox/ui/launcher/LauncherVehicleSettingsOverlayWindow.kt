@@ -11,8 +11,10 @@ import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.Alignment
@@ -82,7 +84,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
         val provider = ViewModelProvider(activity)
@@ -124,7 +126,7 @@ internal object LauncherVehicleSettingsOverlayWindow {
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
-                                    .windowInsetsPadding(WindowInsets.navigationBars),
+                                    .windowInsetsPadding(WindowInsets.navigationBars.exclude(WindowInsets.ime)),
                             ) {
                                 LauncherBottomBar(
                                     canViewModel = canViewModel,

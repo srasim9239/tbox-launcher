@@ -25,8 +25,8 @@ android {
         applicationId = "ras.dashing.tbox.launcher"
         minSdk = 28
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.1.5"
+        versionCode = 10
+        versionName = "0.1.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "TBOX_PROXY_VERSION", "\"${libs.versions.tboxProxy.get()}\"")
@@ -149,6 +149,7 @@ dependencies {
     implementation(libs.sceneview)
     implementation(libs.okhttp)
     implementation(libs.zxing.core)
+    implementation(libs.androidx.palette)
     implementation("com.github.jsparrow2006:tbox-proxy:v${libs.versions.tboxProxy.get()}")
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)

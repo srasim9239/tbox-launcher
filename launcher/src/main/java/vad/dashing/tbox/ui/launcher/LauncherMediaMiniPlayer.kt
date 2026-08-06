@@ -3,6 +3,7 @@ package vad.dashing.tbox.ui.launcher
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
@@ -34,7 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -59,7 +62,32 @@ fun LauncherMediaMiniPlayer(
     val context = LocalContext.current
     var defaultRevision by remember { mutableIntStateOf(0) }
     var pickerVisible by remember { mutableStateOf(false) }
+    var pickerFallback by remember { mutableStateOf(false) }
+    var permissionTick by remember { mutableIntStateOf(0) }
     val playerStates by SharedMediaControlService.playerStates.collectAsStateWithLifecycle()
+
+    // The grant may change while HOME stays resumed (settings open as freeform), so
+    // lifecycle-resume checks are not enough — observe the Secure setting directly.
+    val listenerComponent = remember {
+        android.content.ComponentName(
+            context,
+            vad.dashing.tbox.MediaControlNotificationListenerService::class.java,
+        )
+    }
+    DisposableEffect(context) {
+        val uri = Settings.Secure.getUriFor("enabled_notification_listeners")
+        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                permissionTick++
+            }
+        }
+        context.contentResolver.registerContentObserver(uri, false, observer)
+        onDispose { context.contentResolver.unregisterContentObserver(observer) }
+    }
+    val notificationAccessGranted = remember(permissionTick) {
+        isNotificationListenerEnabled(context, listenerComponent)
+    }
+
     val defaultPackage = remember(context, defaultRevision) {
         LauncherAppConfigStore.defaultMediaPackage(context)
     }
@@ -117,14 +145,44 @@ fun LauncherMediaMiniPlayer(
             SharedMediaControlService.albumArtFor(activePkg)?.asImageBitmap()
         }.getOrNull()
     }
+    // Tint the card towards the album art's dark accent so the widget follows the music.
+    val mediaCardTarget = remember(albumArtBitmap) {
+        val bitmap = albumArtBitmap ?: return@remember LauncherColors.LeftPanelCard
+        runCatching {
+            val swatch = androidx.palette.graphics.Palette.from(bitmap.asAndroidBitmap()).generate().let {
+                it.darkVibrantSwatch ?: it.darkMutedSwatch ?: it.dominantSwatch
+            }
+            swatch?.let { lerp(LauncherColors.LeftPanelCard, Color(it.rgb), 0.42f) }
+        }.getOrNull() ?: LauncherColors.LeftPanelCard
+    }
+    val mediaCardColor by animateColorAsState(targetValue = mediaCardTarget, label = "mediaCardTint")
 
+    val pickerTitle = stringResource(R.string.launcher_media_bind_player)
     LaunchedEffect(pickerVisible) {
         LauncherOverlayElevator.setHoldSource("media_picker", pickerVisible)
+        if (pickerVisible) {
+            val shown = LauncherAppPickerOverlayWindow.show(
+                context = context,
+                title = pickerTitle,
+                apps = mediaPickerApps,
+                onPick = { entry ->
+                    LauncherAppConfigStore.setDefaultMediaPackage(context, entry.packageName)
+                    defaultRevision++
+                    pickerVisible = false
+                },
+                onDismiss = { pickerVisible = false },
+            )
+            pickerFallback = !shown
+        } else {
+            LauncherAppPickerOverlayWindow.hide()
+            pickerFallback = false
+        }
     }
 
+    if (pickerVisible && pickerFallback) {
     LauncherAppPickerDialog(
-        visible = pickerVisible,
-        title = stringResource(R.string.launcher_media_bind_player),
+            visible = true,
+            title = pickerTitle,
         apps = mediaPickerApps,
         onDismiss = { pickerVisible = false },
         onPick = { entry ->
@@ -133,12 +191,13 @@ fun LauncherMediaMiniPlayer(
             pickerVisible = false
         },
     )
+    }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(LauncherColors.LeftPanelCard)
+            .background(mediaCardColor)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -154,7 +213,7 @@ fun LauncherMediaMiniPlayer(
                     .clickable(enabled = activePkg.isNotBlank(), onClick = openActivePlayer),
                 contentAlignment = Alignment.Center,
             ) {
-                if (albumArtBitmap != null && mediaState.notificationAccessGranted) {
+                if (albumArtBitmap != null && notificationAccessGranted) {
                     Image(
                         bitmap = albumArtBitmap,
                         contentDescription = null,
@@ -171,11 +230,11 @@ fun LauncherMediaMiniPlayer(
                 modifier = Modifier
                     .weight(1f)
                     .clickable(
-                        enabled = mediaState.notificationAccessGranted && activePkg.isNotBlank(),
+                        enabled = notificationAccessGranted && activePkg.isNotBlank(),
                         onClick = openActivePlayer,
                     ),
             ) {
-                if (!mediaState.notificationAccessGranted) {
+                if (!notificationAccessGranted) {
                     Text(
                         text = stringResource(R.string.widget_music_access_required),
                         style = MaterialTheme.typography.tboxCaption,
@@ -207,7 +266,7 @@ fun LauncherMediaMiniPlayer(
                     }
                 }
             }
-            if (mediaState.supportsLike && mediaState.notificationAccessGranted) {
+            if (mediaState.supportsLike && notificationAccessGranted) {
                 IconButton(
                     onClick = {
                         SharedMediaControlService.toggleLike(
@@ -247,7 +306,7 @@ fun LauncherMediaMiniPlayer(
         ) {
             LauncherMediaIconButton(
                 iconRes = R.drawable.skip_previous,
-                enabled = mediaState.notificationAccessGranted && activePkg.isNotBlank(),
+                enabled = notificationAccessGranted && activePkg.isNotBlank(),
                 onClick = {
                     SharedMediaControlService.skipToPrevious(
                         selectedPackages = monitorPackages,
@@ -272,7 +331,7 @@ fun LauncherMediaMiniPlayer(
             )
             LauncherMediaIconButton(
                 iconRes = R.drawable.next_track,
-                enabled = mediaState.notificationAccessGranted && activePkg.isNotBlank(),
+                enabled = notificationAccessGranted && activePkg.isNotBlank(),
                 onClick = {
                     SharedMediaControlService.skipToNext(
                         selectedPackages = monitorPackages,
@@ -307,9 +366,5 @@ private fun LauncherMediaIconButton(
 }
 
 private fun openNotificationListenerSettings(context: Context) {
-    LauncherOverlayElevator.bringLauncherToFront(context)
-    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    runCatching { context.startActivity(intent) }
+    launchSystemSettingsInFreeform(context, Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
 }

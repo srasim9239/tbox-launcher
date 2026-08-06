@@ -11,7 +11,9 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -87,7 +89,7 @@ internal object LauncherAppDrawerWindow {
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
         val tboxViewModel = ViewModelProvider(activity)[TboxViewModel::class.java]
@@ -108,6 +110,7 @@ internal object LauncherAppDrawerWindow {
                 val theme by tboxViewModel.currentTheme.collectAsStateWithLifecycle()
                 TboxAppTheme(theme = 2) {
                     val navigationBarInset = WindowInsets.navigationBars
+                        .exclude(WindowInsets.ime)
                         .asPaddingValues()
                         .calculateBottomPadding()
                     BackHandler {
