@@ -206,6 +206,7 @@
     <string name="launcher_icon_menu_remove">Убрать с экрана</string>
     <string name="launcher_icon_menu_fullscreen">Запуск на весь экран</string>
     <string name="launcher_icon_menu_change_app">Сменить приложение</string>
+    <string name="launcher_icon_menu_autostart">Автозапуск при старте</string>
     <string name="launcher_icon_settings_title">Настройки ярлыка</string>
     <string name="launcher_vehicle_settings_title">Настройки авто</string>
     <string name="launcher_vs_section_model">3D-модель</string>
@@ -363,6 +364,11 @@
     <string name="launcher_vs_climate_temp_minus">Температура −</string>
     <string name="launcher_vs_climate_temp_plus">Температура +</string>
     <string name="launcher_vs_wifi">Wi‑Fi</string>
+    <string name="launcher_wifi_ap_ssid">Сеть</string>
+    <string name="launcher_wifi_ap_password">Пароль</string>
+    <string name="launcher_wifi_ap_mac">MAC</string>
+    <string name="launcher_wifi_ap_qr_cd">QR для подключения к Wi‑Fi</string>
+    <string name="launcher_wifi_ap_qr_hint">Отсканируйте с телефона, чтобы подключиться</string>
     <string name="launcher_vs_bluetooth">Bluetooth</string>
     <string name="launcher_vs_volume">Громкость</string>
     <string name="launcher_vs_brightness">Яркость</string>

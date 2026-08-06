@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -95,6 +96,7 @@ fun LauncherRightPanel(
     val priority = remember(context) { LauncherOemAppSort.loadPriorityPackages(context) }
     val hidden = remember(context, configRevision) { LauncherAppConfigStore.hiddenPackages(context) }
     val homeItems = remember(context, configRevision) { LauncherHomeStore.loadItems(context) }
+    val autostartKey = remember(context, configRevision) { LauncherHomeStore.autostartKey(context) }
     val splitPresets = remember(context, configRevision) { LauncherSplitPresetStore.loadPresets(context) }
     val visibleApps = remember(rawApps, hidden) { LauncherAppConfigStore.filterVisible(rawApps, hidden) }
     val pickerApps = remember(visibleApps, priority) { LauncherOemAppSort.sortEntries(visibleApps, priority) }
@@ -262,6 +264,25 @@ fun LauncherRightPanel(
                                 }
                                 .padding(12.dp),
                             color = LauncherColors.AccentCyan,
+                        )
+                    }
+                    if (item != null) {
+                        val isAutostart = item.key == autostartKey
+                        Text(
+                            text = stringResource(R.string.launcher_icon_menu_autostart) +
+                                if (isAutostart) " ✓" else "",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    LauncherHomeStore.setAutostartKey(
+                                        context,
+                                        if (isAutostart) null else item.key,
+                                    )
+                                    onConfigChanged()
+                                    contextMenuIndex = -1
+                                }
+                                .padding(12.dp),
+                            color = if (isAutostart) LauncherColors.AccentCyan else LauncherColors.TextPrimary,
                         )
                     }
                     Text(
@@ -462,6 +483,7 @@ fun LauncherRightPanel(
                             })
                             is HomeDockEntry.App -> LauncherAppDockIcon(
                                 app = entry.entry,
+                                autostart = homeItems.getOrNull(entry.index)?.key == autostartKey,
                                 onClick = {
                                     launchLauncherApp(context, entry.entry.packageName, entry.entry.activityName)
                                 },
@@ -471,6 +493,7 @@ fun LauncherRightPanel(
                                 preset = entry.preset,
                                 leftApp = appsByPackage[entry.preset.leftPackage],
                                 rightApp = appsByPackage[entry.preset.rightPackage],
+                                autostart = homeItems.getOrNull(entry.index)?.key == autostartKey,
                                 onClick = { launchSplitPreset(context, entry.preset, visibleApps) },
                                 onLongClick = { contextMenuIndex = entry.index },
                             )
@@ -533,6 +556,7 @@ private fun LauncherAddIcon(onClick: () -> Unit) {
 @Composable
 private fun LauncherAppDockIcon(
     app: LaunchableAppEntry,
+    autostart: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -564,6 +588,27 @@ private fun LauncherAppDockIcon(
                 fontWeight = FontWeight.Bold,
             )
         }
+        if (autostart) {
+            LauncherAutostartBadge(Modifier.align(Alignment.TopEnd).padding(3.dp))
+        }
+    }
+}
+
+@Composable
+private fun LauncherAutostartBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(15.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(LauncherColors.AccentCyan),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.material3.Icon(
+            Icons.Filled.PlayArrow,
+            contentDescription = null,
+            tint = LauncherColors.SurfaceDark,
+            modifier = Modifier.size(11.dp),
+        )
     }
 }
 
@@ -573,6 +618,7 @@ private fun LauncherSplitDockIcon(
     preset: LauncherSplitPreset,
     leftApp: LaunchableAppEntry?,
     rightApp: LaunchableAppEntry?,
+    autostart: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
@@ -612,6 +658,9 @@ private fun LauncherSplitDockIcon(
             color = LauncherColors.AccentCyan.copy(alpha = 0.7f),
             fontSize = 14.sp,
         )
+        if (autostart) {
+            LauncherAutostartBadge(Modifier.align(Alignment.TopEnd).padding(3.dp))
+        }
     }
 }
 

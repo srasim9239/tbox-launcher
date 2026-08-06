@@ -19,6 +19,20 @@ sealed class LauncherHomeItem {
 internal object LauncherHomeStore {
     private const val PREFS = "tbox_launcher_app_config"
     private const val KEY_HOME = "home_items_json"
+    private const val KEY_AUTOSTART = "autostart_item_key"
+
+    /** Key ([LauncherHomeItem.key]) of the single shortcut launched at launcher start; null = off. */
+    fun autostartKey(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_AUTOSTART, null)
+            ?.takeIf { it.isNotBlank() }
+
+    fun setAutostartKey(context: Context, key: String?) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .apply { if (key == null) remove(KEY_AUTOSTART) else putString(KEY_AUTOSTART, key) }
+            .apply()
+    }
 
     fun loadItems(context: Context): List<LauncherHomeItem> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -62,16 +76,21 @@ internal object LauncherHomeStore {
     fun removeAt(context: Context, index: Int) {
         val items = loadItems(context).toMutableList()
         if (index in items.indices) {
-            items.removeAt(index)
+            val removed = items.removeAt(index)
             saveItems(context, items)
+            if (autostartKey(context) == removed.key) setAutostartKey(context, null)
         }
     }
 
     fun replaceAt(context: Context, index: Int, item: LauncherHomeItem) {
         val items = loadItems(context).toMutableList()
         if (index in items.indices) {
+            val replaced = items[index]
             items[index] = item
             saveItems(context, items)
+            if (autostartKey(context) == replaced.key && replaced.key != item.key) {
+                setAutostartKey(context, null)
+            }
         }
     }
 

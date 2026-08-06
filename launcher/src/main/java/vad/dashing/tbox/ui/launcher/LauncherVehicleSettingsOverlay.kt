@@ -682,6 +682,7 @@ internal fun LauncherVehicleSettingsContent(
                 active = systemSettings.wifiEnabled,
                 onClick = { systemSettings.applyWifiEnabled(!systemSettings.wifiEnabled) },
             )
+            LauncherWifiApBlock()
             LauncherSettingsToggleRow(
                 label = stringResource(R.string.launcher_vs_bluetooth) +
                     (systemSettings.bluetoothName?.let { " · $it" } ?: ""),

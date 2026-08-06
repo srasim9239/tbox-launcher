@@ -17,6 +17,12 @@
     <string name="launcher_donate_copied">Link copied</string>
     <string name="launcher_icon_menu_fullscreen">Launch fullscreen</string>
     <string name="launcher_icon_menu_change_app">Change app</string>
+    <string name="launcher_icon_menu_autostart">Launch on startup</string>
+    <string name="launcher_wifi_ap_ssid">Network</string>
+    <string name="launcher_wifi_ap_password">Password</string>
+    <string name="launcher_wifi_ap_mac">MAC</string>
+    <string name="launcher_wifi_ap_qr_cd">Wi-Fi connection QR code</string>
+    <string name="launcher_wifi_ap_qr_hint">Scan with your phone to connect</string>
     <string name="launcher_icon_settings_title">Shortcut settings</string>
     <string name="launcher_nav_hints">Navigator hints</string>
     <string name="launcher_nav_hints_sub">Yandex Navi / 2GIS (YNarrows-style)</string>

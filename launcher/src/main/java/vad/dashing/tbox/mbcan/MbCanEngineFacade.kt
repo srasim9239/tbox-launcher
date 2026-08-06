@@ -25,6 +25,7 @@ object MbCanEngineFacade {
     private var engineInstance: Any? = null
     private var canGetVehicleParamMethod: Method? = null
     private var canSetVehicleParamMethod: Method? = null
+    private var canGetVehicleParamStringMethod: Method? = null
     private var canGetAudioParamMethod: Method? = null
     private var canSetAudioParamMethod: Method? = null
     private var subscribeMethod: Method? = null
@@ -82,6 +83,11 @@ object MbCanEngineFacade {
             canGetVehicleParamMethod = engineClass.getMethod("canGetVehicleParam", Int::class.javaPrimitiveType)
             canSetVehicleParamMethod =
                 engineClass.getMethod("canSetVehicleParam", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            // Optional vendor entry point (string properties: Wi-Fi SSID/PSK/MAC, BT address...).
+            // Absent on some firmware — must not fail the whole init.
+            canGetVehicleParamStringMethod = runCatching {
+                engineClass.getMethod("canGetVehicleParamString", Int::class.javaPrimitiveType)
+            }.getOrNull()
             canGetAudioParamMethod =
                 engineClass.getMethod("canGetAudioParam", Int::class.javaPrimitiveType)
             canSetAudioParamMethod =
@@ -149,6 +155,18 @@ object MbCanEngineFacade {
         return try {
             withNativeLock {
                 (canSetVehicleParamMethod?.invoke(engineInstance, propertyId, value) as? Int)
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** [com.mengbo.mbCan.MBCanEngine.canGetVehicleParamString] — MBVehicleProperty string ids (62/63/116...). */
+    fun canGetVehicleParamString(propertyId: Int): String? {
+        if (ensureInitialized() !is MbCanAvailability.Available) return null
+        return try {
+            withNativeLock {
+                (canGetVehicleParamStringMethod?.invoke(engineInstance, propertyId) as? String)
             }
         } catch (_: Throwable) {
             null

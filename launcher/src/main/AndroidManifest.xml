@@ -24,6 +24,11 @@
     <uses-permission
         android:name="android.permission.REAL_GET_TASKS"
         tools:ignore="ProtectedPermissions" />
+    <!-- READ_LOGS (signature|privileged|development) — granted via pm grant; lets the launcher
+         parse AIService ("chitin") boot-time SoftAP credentials for the Wi-Fi QR block. -->
+    <uses-permission
+        android:name="android.permission.READ_LOGS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
