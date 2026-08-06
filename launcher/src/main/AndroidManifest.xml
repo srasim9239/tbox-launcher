@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="vad.dashing.tbox">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- Settings.Global.policy_control for freeform bounds (grant: pm grant ... WRITE_SECURE_SETTINGS) -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- REAL_GET_TASKS (signature|development) — granted via pm grant; needed on Android 9
+         so ActivityManager.getRunningTasks returns foreign tasks for the Back root guard. -->
+    <uses-permission android:name="android.permission.GET_TASKS" />
+    <uses-permission
+        android:name="android.permission.REAL_GET_TASKS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
+        android:minSdkVersion="29" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        android:minSdkVersion="34" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission
+        android:name="android.permission.MANAGE_ACTIVITY_STACKS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.permission.ACTIVITY_EMBEDDING"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission
+        android:name="android.car.permission.CAR_INFO"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_VENDOR_EXTENSION"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_SPEED"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_POWERTRAIN"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_ENGINE_DETAILED"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_ENERGY"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_EXTERIOR_LIGHTS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_EXTERIOR_ENVIRONMENT"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_CABIN"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_CONTROL_AUDIO_VOLUME"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_CONTROL_CAR_CLIMATE"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_CONTROL_INTERIOR_LIGHTS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.car.permission.CAR_CONTROL_EXTERIOR_LIGHTS"
+        tools:ignore="ProtectedPermissions" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.CAR_LAUNCHER" />
+        </intent>
+        <package android:name="com.wt.launcher3" />
+        <package android:name="ru.yandex.yandexnavi" />
+        <package android:name="ru.dublgis.dgismobile" />
+        <package android:name="com.mengbo.acsettings" />
+        <package android:name="com.mengbo.mbcanwidget" />
+        <package android:name="vad.dashing.tbox" />
+        <provider android:authorities="com.wt.launcher3" />
+    </queries>
+
+    <application
+        android:name="vad.dashing.tbox.LauncherApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/launcher_standalone_app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TBox"
+        android:usesCleartextTraffic="true"
+        android:largeHeap="true"
+        android:hardwareAccelerated="true"
+        android:resizeableActivity="false"
+        tools:targetApi="31">
+
+        <activity
+            android:name="vad.dashing.tbox.LauncherHomeActivity"
+            android:exported="true"
+            android:label="@string/launcher_standalone_app_name"
+            android:launchMode="singleTask"
+            android:resizeableActivity="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:theme="@style/Theme.TBox.Launcher">
+            <meta-data
+                android:name="flagActivityFullScreen"
+                android:value="true" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="vad.dashing.tbox.MainActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="@string/launcher_standalone_about_title"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.TBox.Launcher" />
+
+        <activity
+            android:name="vad.dashing.tbox.LauncherAppProxyActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.TBox.Transparent" />
+
+        <activity
+            android:name="vad.dashing.tbox.LauncherVehicleSettingsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:resizeableActivity="true"
+            android:screenOrientation="landscape"
+            android:taskAffinity="ras.dashing.tbox.launcher.vehicle_settings"
+            android:theme="@style/Theme.TBox.Launcher"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density" />
+
+        <service
+            android:name="vad.dashing.tbox.BackgroundService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <service
+            android:name="vad.dashing.tbox.MediaControlNotificationListenerService"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/launcher_standalone_app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name="vad.dashing.tbox.ui.launcher.LauncherNavAccessibilityService"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/launcher_nav_accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/launcher_nav_accessibility_service" />
+        </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

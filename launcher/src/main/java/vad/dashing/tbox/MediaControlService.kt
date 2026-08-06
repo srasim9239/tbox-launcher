@@ -1,0 +1,899 @@
+package vad.dashing.tbox
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.media.MediaMetadata
+import android.media.Rating
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
+import android.os.SystemClock
+import android.view.KeyEvent
+import android.graphics.Bitmap
+import android.provider.Settings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.util.LinkedHashSet
+
+const val MUSIC_WIDGET_DATA_KEY = "musicWidget"
+
+/** After [launchPlayerApp] from a cold start, re-send play if session still not playing (matches widget auto-play verify). */
+private const val LAUNCH_PLAYER_VERIFY_DELAY_MS = 4000L
+/** After manual play button launch: if session exists but still paused, send one more play command. */
+private const val LAUNCH_PLAYER_MANUAL_LATE_PLAY_RETRY_DELAY_MS = 7000L
+/** Poll cadence for early play/session detection after external player launch. */
+private const val PLAYER_LAUNCH_STATE_POLL_MS = 500L
+
+enum class SupportedMediaPlayer(
+    val packageName: String,
+    val titleRes: Int,
+    val iconRes: Int
+) {
+    BLUETOOTH_PHONE(
+        packageName = "com.android.bluetooth",
+        titleRes = R.string.media_player_bluetooth_phone,
+        iconRes = R.drawable.player_bluetooth
+    );
+
+    companion object {
+        fun fromPackage(packageName: String): SupportedMediaPlayer? {
+            val normalizedPackage = packageName.trim().lowercase()
+            if (normalizedPackage.isBlank()) return null
+            return entries.firstOrNull { it.packageName == normalizedPackage }
+        }
+    }
+}
+
+data class MediaPlayerState(
+    /** Non-null when [packageName] matches a built-in entry; otherwise UI uses a generic icon/label. */
+    val player: SupportedMediaPlayer?,
+    val artist: String = "",
+    val track: String = "",
+    val durationMs: Long = 0L,
+    val positionMs: Long = 0L,
+    val playbackSpeed: Float = 1f,
+    val positionUpdateTimeMs: Long = 0L,
+    val isPlaying: Boolean = false,
+    val hasSession: Boolean = false,
+    val isLiked: Boolean? = null,
+    val supportsLike: Boolean = false,
+)
+
+data class MediaWidgetState(
+    val player: SupportedMediaPlayer? = null,
+    val artist: String = "",
+    val track: String = "",
+    val durationMs: Long = 0L,
+    val positionMs: Long = 0L,
+    val playbackSpeed: Float = 1f,
+    val positionUpdateTimeMs: Long = 0L,
+    val isPlaying: Boolean = false,
+    val controlsAvailable: Boolean = false,
+    val notificationAccessGranted: Boolean = false,
+    val isLiked: Boolean? = null,
+    val supportsLike: Boolean = false,
+)
+
+/**
+ * Canonical package name for media widget selection and MediaSession matching.
+ * Accepts any plausible Android package id (launcher apps); known players use enum aliases.
+ */
+fun canonicalMediaPlayerPackage(raw: String): String? {
+    val trimmed = raw.trim().lowercase()
+    if (trimmed.isBlank()) return null
+    val mapped = when (trimmed) {
+        "ru.yandex.radio" -> "ru.yandex.mobile.fmradio"
+        else -> trimmed
+    }
+    SupportedMediaPlayer.fromPackage(mapped)?.packageName?.let { return it }
+    if (!mapped.contains('.')) return null
+    if (mapped.length > 200) return null
+    if (mapped.any { ch ->
+            ch !in 'a'..'z' && ch !in '0'..'9' && ch != '.' && ch != '_'
+        }
+    ) {
+        return null
+    }
+    return mapped
+}
+
+fun normalizeMediaPlayerPackages(rawPackages: Collection<String>): Set<String> {
+    val out = LinkedHashSet<String>()
+    for (raw in rawPackages) {
+        canonicalMediaPlayerPackage(raw)?.let { out.add(it) }
+    }
+    return out
+}
+
+fun defaultMediaPlayerPackages(): Set<String> = emptySet()
+
+fun orderedMediaPlayerPackages(rawPackages: Collection<String>): List<String> {
+    val orderedUnique = LinkedHashSet<String>()
+    for (raw in rawPackages) {
+        canonicalMediaPlayerPackage(raw)?.let { orderedUnique.add(it) }
+    }
+    if (orderedUnique.isEmpty()) return emptyList()
+    val knownOrdered = SupportedMediaPlayer.entries
+        .map { it.packageName }
+        .filter { it in orderedUnique }
+    val knownSet = knownOrdered.toSet()
+    val extras = orderedUnique.filter { it !in knownSet }
+    return knownOrdered + extras
+}
+
+fun resolveMediaPlayersForWidget(config: FloatingDashboardWidgetConfig): Set<String> {
+    if (config.dataKey != MUSIC_WIDGET_DATA_KEY) return emptySet()
+    val selected = normalizeMediaPlayerPackages(config.mediaPlayers)
+    return if (selected.isEmpty()) defaultMediaPlayerPackages() else selected
+}
+
+fun resolveSelectedMediaPlayerForWidget(config: FloatingDashboardWidgetConfig): String {
+    return canonicalMediaPlayerPackage(config.mediaSelectedPlayer).orEmpty()
+}
+
+fun collectMediaPlayersFromWidgetConfigs(
+    configs: List<FloatingDashboardWidgetConfig>
+): Set<String> {
+    return configs
+        .asSequence()
+        .filter { it.dataKey == MUSIC_WIDGET_DATA_KEY }
+        .flatMap { resolveMediaPlayersForWidget(it).asSequence() }
+        .toSet()
+}
+
+object SharedMediaControlService {
+    private val launchPlayerVerifyExceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        runCatching {
+            TboxRepository.addLog("ERROR", "MediaControl", "Launch verify error: ${throwable.message}")
+        }
+    }
+    private val launchPlayerVerifyScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default + launchPlayerVerifyExceptionHandler)
+
+    private var appContext: Context? = null
+    private var mediaSessionManager: MediaSessionManager? = null
+    private var activeSessionsListenerRegistered: Boolean = false
+    private var listenerComponent: ComponentName? = null
+    private var notificationAccessGranted: Boolean = false
+
+    private val sourceSelections = mutableMapOf<String, Set<String>>()
+    private var requestedPackages: Set<String> = emptySet()
+
+    private val controllers = mutableMapOf<String, MediaController>()
+    private val controllerCallbacks = mutableMapOf<String, MediaController.Callback>()
+    private val albumArtByPackage = mutableMapOf<String, Bitmap?>()
+
+    private val _playerStates = MutableStateFlow<Map<String, MediaPlayerState>>(emptyMap())
+    val playerStates: StateFlow<Map<String, MediaPlayerState>> = _playerStates.asStateFlow()
+
+    private val activeSessionsListener = MediaSessionManager.OnActiveSessionsChangedListener {
+            activeControllers ->
+        synchronized(this) {
+            if (requestedPackages.isEmpty()) return@OnActiveSessionsChangedListener
+            syncControllersLocked(activeControllers.orEmpty())
+            publishPlayerStatesLocked()
+        }
+    }
+
+    fun updateSourceSelection(
+        context: Context,
+        sourceId: String,
+        mediaPackages: Set<String>
+    ) {
+        if (sourceId.isBlank()) return
+        synchronized(this) {
+            initializeLocked(context)
+            val normalized = normalizeMediaPlayerPackages(mediaPackages)
+            if (normalized.isEmpty()) {
+                sourceSelections.remove(sourceId)
+            } else {
+                sourceSelections[sourceId] = normalized
+            }
+            refreshRequestedPackagesLocked()
+        }
+    }
+
+    fun clearSourceSelection(sourceId: String) {
+        if (sourceId.isBlank()) return
+        synchronized(this) {
+            sourceSelections.remove(sourceId)
+            refreshRequestedPackagesLocked()
+        }
+    }
+
+    fun resolveWidgetState(
+        selectedPackages: Set<String>,
+        currentStates: Map<String, MediaPlayerState> = playerStates.value,
+        preferredPackage: String = ""
+    ): MediaWidgetState {
+        val refreshedStates = synchronized(this) {
+            updateNotificationAccessLocked()
+            if (requestedPackages.isNotEmpty() &&
+                notificationAccessGranted &&
+                _playerStates.value.isEmpty()
+            ) {
+                startMonitoringLocked()
+                syncControllersLocked()
+                publishPlayerStatesLocked()
+            }
+            _playerStates.value
+        }
+        val effectiveStates = if (refreshedStates.isNotEmpty() || currentStates.isEmpty()) {
+            refreshedStates
+        } else {
+            currentStates
+        }
+        val orderedSelected = orderedMediaPlayerPackages(selectedPackages)
+        if (orderedSelected.isEmpty()) {
+            return MediaWidgetState(notificationAccessGranted = isNotificationAccessGranted())
+        }
+
+        val normalizedPreferred = normalizeMediaPlayerPackages(listOf(preferredPackage)).firstOrNull()
+        val prioritizedPackages = if (normalizedPreferred != null && normalizedPreferred in orderedSelected) {
+            listOf(normalizedPreferred) + orderedSelected.filterNot { it == normalizedPreferred }
+        } else {
+            orderedSelected
+        }
+
+        val selectedState = if (normalizedPreferred != null) {
+            effectiveStates[normalizedPreferred]
+        } else {
+            val candidates = prioritizedPackages.mapNotNull { effectiveStates[it] }
+            candidates.firstOrNull { it.isPlaying }
+                ?: candidates.firstOrNull { it.track.isNotBlank() || it.artist.isNotBlank() }
+                ?: candidates.firstOrNull { it.hasSession }
+        }
+
+        val fallbackPlayer = selectedState?.player
+            ?: SupportedMediaPlayer.fromPackage(prioritizedPackages.firstOrNull().orEmpty())
+
+        return MediaWidgetState(
+            player = fallbackPlayer,
+            artist = selectedState?.artist.orEmpty(),
+            track = selectedState?.track.orEmpty(),
+            durationMs = selectedState?.durationMs ?: 0L,
+            positionMs = selectedState?.positionMs ?: 0L,
+            playbackSpeed = selectedState?.playbackSpeed ?: 1f,
+            positionUpdateTimeMs = selectedState?.positionUpdateTimeMs ?: 0L,
+            isPlaying = selectedState?.isPlaying == true,
+            controlsAvailable = selectedState?.hasSession == true,
+            notificationAccessGranted = isNotificationAccessGranted(),
+            isLiked = selectedState?.isLiked,
+            supportsLike = selectedState?.supportsLike == true,
+        )
+    }
+
+    fun albumArtFor(packageName: String): Bitmap? = synchronized(this) {
+        albumArtByPackage[packageName]
+    }
+
+    fun skipToPrevious(selectedPackages: Set<String>, preferredPackage: String = "") {
+        synchronized(this) {
+            syncControllersLocked()
+            resolveControllerLocked(
+                selectedPackages = selectedPackages,
+                preferredPackage = preferredPackage,
+                strictPreferred = preferredPackage.isNotBlank()
+            )
+                ?.transportControls
+                ?.skipToPrevious()
+        }
+    }
+
+    fun playPause(
+        context: Context,
+        selectedPackages: Set<String>,
+        preferredPackage: String = "",
+        keepPlayerForeground: Boolean = false,
+        launchAppIfNeeded: Boolean = true,
+    ) {
+        var controllerHandled = false
+        synchronized(this) {
+            syncControllersLocked()
+            val controller = resolveControllerLocked(
+                selectedPackages = selectedPackages,
+                preferredPackage = preferredPackage,
+                strictPreferred = preferredPackage.isNotBlank() && launchAppIfNeeded,
+            ) ?: if (!launchAppIfNeeded) {
+                resolveControllerLocked(
+                    selectedPackages = selectedPackages,
+                    preferredPackage = preferredPackage,
+                    strictPreferred = false,
+                )
+            } else {
+                null
+            }
+            if (controller != null) {
+                val isPlaying = controller.playbackState.isPlayingState()
+                if (isPlaying) {
+                    controller.transportControls.pause()
+                } else {
+                    controller.transportControls.play()
+                }
+                controllerHandled = true
+            }
+        }
+        if (controllerHandled) return
+
+        val targetPackage = resolveTargetPackage(
+            selectedPackages = selectedPackages,
+            preferredPackage = preferredPackage
+        ) ?: return
+        sendMediaPlayKeyEvent(context.applicationContext, targetPackage)
+        if (!launchAppIfNeeded) return
+        launchPlayerApp(
+            context.applicationContext,
+            targetPackage,
+            scheduleColdStartPlayRetry = true,
+            keepPlayerForeground = keepPlayerForeground,
+            scheduleLateSessionPlayRetry = true
+        )
+    }
+
+    fun toggleLike(selectedPackages: Set<String>, preferredPackage: String = "") {
+        synchronized(this) {
+            syncControllersLocked()
+            val controller = resolveControllerLocked(
+                selectedPackages = selectedPackages,
+                preferredPackage = preferredPackage,
+                strictPreferred = preferredPackage.isNotBlank(),
+            ) ?: return
+            val playbackState = controller.playbackState
+            if ((playbackState?.actions ?: 0L) and PlaybackState.ACTION_SET_RATING == 0L) return
+            val metadata = controller.metadata
+            val current = metadata.extractUserRating()
+            val likedNow = current?.isRated == true && current.ratingStyle == Rating.RATING_HEART && current.hasHeart()
+            controller.transportControls.setRating(Rating.newHeartRating(!likedNow))
+        }
+    }
+
+    fun play(
+        context: Context,
+        selectedPackages: Set<String>,
+        preferredPackage: String = "",
+        keepPlayerForeground: Boolean = false // anymani: опция для отключения возврата лаунчера
+    ) {
+        var controllerHandled = false
+        synchronized(this) {
+            syncControllersLocked()
+            val controller = resolveControllerLocked(
+                selectedPackages = selectedPackages,
+                preferredPackage = preferredPackage,
+                strictPreferred = preferredPackage.isNotBlank()
+            )
+            if (controller != null) {
+                if (!controller.playbackState.isPlayingState()) {
+                    controller.transportControls.play()
+                }
+                controllerHandled = true
+            }
+        }
+        if (controllerHandled) return
+
+        val targetPackage = resolveTargetPackage(
+            selectedPackages = selectedPackages,
+            preferredPackage = preferredPackage
+        ) ?: return
+        sendMediaPlayKeyEvent(context.applicationContext, targetPackage)
+        launchPlayerApp(
+            context.applicationContext,
+            targetPackage, scheduleColdStartPlayRetry = true,
+            keepPlayerForeground = keepPlayerForeground, // anymani: передаём флаг в launchPlayerApp
+            scheduleLateSessionPlayRetry = true
+        )
+    }
+
+    fun skipToNext(selectedPackages: Set<String>, preferredPackage: String = "") {
+        synchronized(this) {
+            syncControllersLocked()
+            resolveControllerLocked(
+                selectedPackages = selectedPackages,
+                preferredPackage = preferredPackage,
+                strictPreferred = preferredPackage.isNotBlank()
+            )
+                ?.transportControls
+                ?.skipToNext()
+        }
+    }
+
+    internal fun scheduleColdStartPlayRetryIfNeeded(appContext: Context, targetPackage: String) {
+        launchPlayerVerifyScope.launch {
+            try {
+                delay(LAUNCH_PLAYER_VERIFY_DELAY_MS)
+                val needsRetry = synchronized(this@SharedMediaControlService) {
+                    initializeLocked(appContext)
+                    syncControllersLocked()
+                    val controller = resolveControllerLocked(
+                        selectedPackages = setOf(targetPackage),
+                        preferredPackage = targetPackage,
+                        strictPreferred = true
+                    )
+                    controller == null || !controller.playbackState.isPlayingState()
+                }
+                if (!needsRetry) return@launch
+                sendMediaPlayKeyEvent(appContext, targetPackage)
+                launchPlayerApp(appContext, targetPackage, scheduleColdStartPlayRetry = false)
+            } catch (e: Exception) {
+                TboxRepository.addLog("ERROR", "MediaControl", "Cold start retry failed: ${e.message}")
+            }
+        }
+    }
+
+    internal fun scheduleLateSessionPlayRetryIfNeeded(appContext: Context, targetPackage: String) {
+        launchPlayerVerifyScope.launch {
+            try {
+                val deadline = SystemClock.elapsedRealtime() + LAUNCH_PLAYER_MANUAL_LATE_PLAY_RETRY_DELAY_MS
+                var shouldSendFallbackKey = false
+                while (SystemClock.elapsedRealtime() < deadline) {
+                    var shouldExit = false
+                    synchronized(this@SharedMediaControlService) {
+                        initializeLocked(appContext)
+                        syncControllersLocked()
+                        val controller = resolveControllerLocked(
+                            selectedPackages = setOf(targetPackage),
+                            preferredPackage = targetPackage,
+                            strictPreferred = true
+                        )
+                        when {
+                            controller == null -> Unit
+                            controller.playbackState.isPlayingState() -> {
+                                shouldExit = true
+                            }
+                            else -> {
+                                controller.transportControls.play()
+                                shouldSendFallbackKey = true
+                                shouldExit = true
+                            }
+                        }
+                    }
+                    if (shouldExit) break
+                    delay(PLAYER_LAUNCH_STATE_POLL_MS)
+                }
+                if (shouldSendFallbackKey) {
+                    sendMediaPlayKeyEvent(appContext, targetPackage)
+                }
+            } catch (e: Exception) {
+                TboxRepository.addLog("ERROR", "MediaControl", "Late play retry failed: ${e.message}")
+            }
+        }
+    }
+
+    internal fun scheduleDeferredMainReturnOnPlaybackStartIfNeeded(
+        appContext: Context,
+        targetPackage: String,
+        maxWaitMs: Long = DeferredMainActivityRequest.AFTER_MUSIC_WIDGET_PLAYER_LAUNCH_MS
+    ) {
+        launchPlayerVerifyScope.launch {
+            try {
+                val deadline = SystemClock.elapsedRealtime() + maxWaitMs.coerceAtLeast(0L)
+                while (SystemClock.elapsedRealtime() < deadline) {
+                    val isPlaying = synchronized(this@SharedMediaControlService) {
+                        initializeLocked(appContext)
+                        syncControllersLocked()
+                        val controller = resolveControllerLocked(
+                            selectedPackages = setOf(targetPackage),
+                            preferredPackage = targetPackage,
+                            strictPreferred = true
+                        )
+                        controller?.playbackState.isPlayingState()
+                    }
+                    if (isPlaying) {
+                        DeferredMainActivityRequest.scheduleReturnAfterExternalPlayerLaunchIfMainWasVisible(
+                            context = appContext,
+                            delayMs = 0L
+                        )
+                        return@launch
+                    }
+                    delay(PLAYER_LAUNCH_STATE_POLL_MS)
+                }
+                DeferredMainActivityRequest.scheduleReturnAfterExternalPlayerLaunchIfMainWasVisible(
+                    context = appContext,
+                    delayMs = 0L
+                )
+            } catch (e: Exception) {
+                TboxRepository.addLog("ERROR", "MediaControl", "Deferred main return failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun initializeLocked(context: Context) {
+        if (appContext == null) {
+            appContext = context.applicationContext
+        }
+        val contextRef = appContext ?: return
+        if (mediaSessionManager == null) {
+            mediaSessionManager = contextRef.getSystemService(MediaSessionManager::class.java)
+        }
+        if (listenerComponent == null) {
+            listenerComponent = ComponentName(contextRef, MediaControlNotificationListenerService::class.java)
+        }
+        updateNotificationAccessLocked()
+    }
+
+    private fun refreshRequestedPackagesLocked() {
+        requestedPackages = sourceSelections.values
+            .flatMap { it }
+            .toSet()
+        updateNotificationAccessLocked()
+
+        if (requestedPackages.isEmpty()) {
+            stopMonitoringLocked()
+            return
+        }
+        if (!notificationAccessGranted) {
+            stopMonitoringLocked()
+            return
+        }
+
+        startMonitoringLocked()
+        syncControllersLocked()
+        publishPlayerStatesLocked()
+    }
+
+    private fun startMonitoringLocked() {
+        if (activeSessionsListenerRegistered) return
+        if (!notificationAccessGranted) return
+        val manager = mediaSessionManager ?: return
+        val component = listenerComponent ?: return
+        try {
+            manager.addOnActiveSessionsChangedListener(activeSessionsListener, component)
+            activeSessionsListenerRegistered = true
+        } catch (_: SecurityException) {
+            activeSessionsListenerRegistered = false
+        }
+    }
+
+    private fun stopMonitoringLocked() {
+        if (activeSessionsListenerRegistered) {
+            try {
+                mediaSessionManager?.removeOnActiveSessionsChangedListener(activeSessionsListener)
+            } catch (_: SecurityException) {
+                // Ignore
+            } finally {
+                activeSessionsListenerRegistered = false
+            }
+        }
+
+        controllers.keys.toList().forEach { packageName ->
+            unregisterControllerLocked(packageName)
+        }
+        _playerStates.value = emptyMap()
+    }
+
+    private fun syncControllersLocked(
+        activeControllers: List<MediaController> = queryActiveControllersLocked()
+    ) {
+        val activeByPackage = activeControllers
+            .mapNotNull { controller ->
+                val canonical = canonicalMediaPlayerPackage(controller.packageName)
+                    ?: return@mapNotNull null
+                if (canonical !in requestedPackages) {
+                    null
+                } else {
+                    canonical to controller
+                }
+            }
+            .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+            .mapValues { (_, candidates) ->
+                selectPreferredController(candidates)
+            }
+
+        val packagesToRemove = controllers.keys
+            .filter { packageName ->
+                packageName !in requestedPackages || activeByPackage[packageName] == null
+            }
+        packagesToRemove.forEach { unregisterControllerLocked(it) }
+
+        activeByPackage.forEach { (packageName, controller) ->
+            val existing = controllers[packageName]
+            if (existing?.sessionToken != controller.sessionToken) {
+                unregisterControllerLocked(packageName)
+                registerControllerLocked(packageName, controller)
+            }
+        }
+    }
+
+    private fun selectPreferredController(candidates: List<MediaController>): MediaController {
+        return candidates.firstOrNull { it.playbackState.isPlayingState() }
+            ?: candidates.firstOrNull {
+                val metadata = it.metadata
+                metadata.extractTrackTitle().isNotBlank() || metadata.extractArtistName().isNotBlank()
+            }
+            ?: candidates.first()
+    }
+
+    private fun queryActiveControllersLocked(): List<MediaController> {
+        updateNotificationAccessLocked()
+        if (!notificationAccessGranted) return emptyList()
+        val manager = mediaSessionManager ?: return emptyList()
+        val component = listenerComponent ?: return emptyList()
+        return try {
+            manager.getActiveSessions(component).orEmpty()
+        } catch (_: SecurityException) {
+            emptyList()
+        }
+    }
+
+    private fun registerControllerLocked(packageName: String, controller: MediaController) {
+        val callback = object : MediaController.Callback() {
+            override fun onMetadataChanged(metadata: MediaMetadata?) {
+                synchronized(this@SharedMediaControlService) {
+                    publishPlayerStatesLocked()
+                }
+            }
+
+            override fun onPlaybackStateChanged(state: PlaybackState?) {
+                synchronized(this@SharedMediaControlService) {
+                    publishPlayerStatesLocked()
+                }
+            }
+
+            override fun onSessionDestroyed() {
+                synchronized(this@SharedMediaControlService) {
+                    unregisterControllerLocked(packageName)
+                    syncControllersLocked()
+                    publishPlayerStatesLocked()
+                }
+            }
+        }
+        controller.registerCallback(callback)
+        controllers[packageName] = controller
+        controllerCallbacks[packageName] = callback
+    }
+
+    private fun unregisterControllerLocked(packageName: String) {
+        val controller = controllers.remove(packageName) ?: return
+        controllerCallbacks.remove(packageName)?.let { callback ->
+            try {
+                controller.unregisterCallback(callback)
+            } catch (_: Exception) {
+                // Ignore stale callback failures.
+            }
+        }
+    }
+
+    private fun resolveControllerLocked(
+        selectedPackages: Set<String>,
+        preferredPackage: String = "",
+        strictPreferred: Boolean = false
+    ): MediaController? {
+        val selected = orderedMediaPlayerPackages(selectedPackages)
+        val effectiveSelection = selected.ifEmpty {
+            orderedMediaPlayerPackages(requestedPackages)
+        }
+        val normalizedPreferred = normalizeMediaPlayerPackages(listOf(preferredPackage)).firstOrNull()
+        val prioritizedSelection = if (normalizedPreferred != null && normalizedPreferred in effectiveSelection) {
+            listOf(normalizedPreferred) + effectiveSelection.filterNot { it == normalizedPreferred }
+        } else {
+            effectiveSelection
+        }
+        val candidates = prioritizedSelection.mapNotNull { packageName ->
+            controllers[packageName]
+        }
+        if (candidates.isEmpty()) return null
+        if (normalizedPreferred != null) {
+            val preferredController = candidates.firstOrNull {
+                canonicalMediaPlayerPackage(it.packageName) == normalizedPreferred
+            }
+            if (strictPreferred) {
+                return preferredController
+            }
+            return preferredController
+                ?: candidates.firstOrNull { it.playbackState.isPlayingState() }
+                ?: candidates.first()
+        }
+        return candidates.firstOrNull { it.playbackState.isPlayingState() } ?: candidates.first()
+    }
+
+    private fun resolveTargetPackage(
+        selectedPackages: Set<String>,
+        preferredPackage: String
+    ): String? {
+        val normalizedPreferred = normalizeMediaPlayerPackages(listOf(preferredPackage)).firstOrNull()
+        if (normalizedPreferred != null) return normalizedPreferred
+        return orderedMediaPlayerPackages(selectedPackages).firstOrNull()
+    }
+
+    private fun publishPlayerStatesLocked() {
+        if (requestedPackages.isEmpty()) {
+            _playerStates.value = emptyMap()
+            albumArtByPackage.clear()
+            return
+        }
+
+        val orderedPackages = orderedMediaPlayerPackages(requestedPackages)
+        val updatedStates = mutableMapOf<String, MediaPlayerState>()
+        val activePackages = orderedPackages.toSet()
+        albumArtByPackage.keys.retainAll(activePackages)
+        orderedPackages.forEach { packageName ->
+            val player = SupportedMediaPlayer.fromPackage(packageName)
+            val controller = controllers[packageName]
+            val metadata = controller?.metadata
+            val playbackState = controller?.playbackState
+            val track = metadata.extractTrackTitle()
+            val artist = metadata.extractArtistName()
+            albumArtByPackage[packageName] = metadata.extractAlbumArt()
+            updatedStates[packageName] = MediaPlayerState(
+                player = player,
+                artist = artist,
+                track = track,
+                durationMs = metadata.extractDurationMs(),
+                positionMs = playbackState.extractPositionMs(),
+                playbackSpeed = playbackState.extractPlaybackSpeed(),
+                positionUpdateTimeMs = playbackState.extractPositionUpdateTimeMs(),
+                isPlaying = playbackState.isPlayingState(),
+                hasSession = controller != null,
+                isLiked = metadata.extractLikedState(),
+                supportsLike = playbackState.supportsLike(),
+            )
+        }
+
+        _playerStates.value = updatedStates
+    }
+
+    private fun isNotificationAccessGranted(): Boolean {
+        return synchronized(this) { notificationAccessGranted }
+    }
+
+    private fun updateNotificationAccessLocked() {
+        val context = appContext
+        val component = listenerComponent
+        notificationAccessGranted = if (context == null || component == null) {
+            false
+        } else {
+            hasNotificationListenerAccess(context, component)
+        }
+    }
+}
+
+private fun PlaybackState?.isPlayingState(): Boolean {
+    return when (this?.state) {
+        PlaybackState.STATE_PLAYING,
+        PlaybackState.STATE_BUFFERING,
+        PlaybackState.STATE_CONNECTING -> true
+        else -> false
+    }
+}
+
+private fun PlaybackState?.supportsLike(): Boolean {
+    return ((this?.actions ?: 0L) and PlaybackState.ACTION_SET_RATING) != 0L
+}
+
+private fun MediaMetadata?.extractUserRating(): Rating? {
+    if (this == null) return null
+    return getRating(MediaMetadata.METADATA_KEY_USER_RATING)
+        ?: getRating(MediaMetadata.METADATA_KEY_RATING)
+}
+
+private fun MediaMetadata?.extractLikedState(): Boolean? {
+    val rating = extractUserRating() ?: return null
+    if (!rating.isRated) return false
+    return when (rating.ratingStyle) {
+        Rating.RATING_HEART -> rating.hasHeart()
+        Rating.RATING_THUMB_UP_DOWN -> rating.isThumbUp
+        else -> null
+    }
+}
+
+private fun MediaMetadata?.extractAlbumArt(maxPx: Int = 256): Bitmap? {
+    if (this == null) return null
+    return runCatching {
+        val raw = getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            ?: getBitmap(MediaMetadata.METADATA_KEY_ART)
+            ?: getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+            ?: return null
+        val software = raw.toSoftwareBitmap()
+        val maxSide = maxOf(software.width, software.height)
+        if (maxSide <= maxPx) return software
+        val scale = maxPx.toFloat() / maxSide.toFloat()
+        val w = (software.width * scale).toInt().coerceAtLeast(1)
+        val h = (software.height * scale).toInt().coerceAtLeast(1)
+        Bitmap.createScaledBitmap(software, w, h, true)
+    }.getOrNull()
+}
+
+private fun Bitmap.toSoftwareBitmap(): Bitmap {
+    if (config != Bitmap.Config.HARDWARE) return this
+    return copy(Bitmap.Config.ARGB_8888, false) ?: this
+}
+
+private fun MediaMetadata?.extractTrackTitle(): String {
+    if (this == null) return ""
+    val title = getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
+    if (title.isNotBlank()) return title
+    return getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE).orEmpty()
+}
+
+private fun MediaMetadata?.extractArtistName(): String {
+    if (this == null) return ""
+    val artist = getString(MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
+    if (artist.isNotBlank()) return artist
+    return getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST).orEmpty()
+}
+
+private fun MediaMetadata?.extractDurationMs(): Long {
+    if (this == null) return 0L
+    val duration = getLong(MediaMetadata.METADATA_KEY_DURATION)
+    return if (duration > 0L) duration else 0L
+}
+
+private fun PlaybackState?.extractPositionMs(): Long {
+    val position = this?.position ?: 0L
+    return if (position > 0L) position else 0L
+}
+
+private fun PlaybackState?.extractPlaybackSpeed(): Float {
+    return this?.playbackSpeed?.takeIf { it > 0f } ?: 1f
+}
+
+private fun PlaybackState?.extractPositionUpdateTimeMs(): Long {
+    val updateTime = this?.lastPositionUpdateTime ?: 0L
+    if (updateTime > 0L) return updateTime
+    return SystemClock.elapsedRealtime()
+}
+
+private fun hasNotificationListenerAccess(
+    context: Context,
+    listenerComponent: ComponentName
+): Boolean {
+    val enabledListeners = Settings.Secure.getString(
+        context.contentResolver,
+        "enabled_notification_listeners"
+    ).orEmpty()
+    if (enabledListeners.isBlank()) return false
+
+    return enabledListeners
+        .split(':')
+        .mapNotNull { ComponentName.unflattenFromString(it) }
+        .any { it == listenerComponent }
+}
+
+private fun sendMediaPlayKeyEvent(context: Context, packageName: String) {
+    try {
+        val keyDown = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+            setPackage(packageName)
+            putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+        }
+        val keyUp = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+            setPackage(packageName)
+            putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+        }
+        context.sendOrderedBroadcast(keyDown, null)
+        context.sendOrderedBroadcast(keyUp, null)
+    } catch (e: Exception) {
+        TboxRepository.addLog("ERROR", "MediaControl", "Media play key broadcast failed: ${e.message}")
+    }
+}
+
+private fun launchPlayerApp(
+    context: Context,
+    packageName: String,
+    scheduleColdStartPlayRetry: Boolean = true,
+    keepPlayerForeground: Boolean = false, // anymani: флаг для контроля возврата лаунчера
+    scheduleLateSessionPlayRetry: Boolean = false
+) {
+    // Same freeform/embedded window as dock / app drawer — never raw fullscreen startActivity.
+    val launched = runCatching {
+        vad.dashing.tbox.ui.launcher.launchLauncherApp(context, packageName)
+    }.isSuccess
+    DiagFileLog.i(
+        "MediaLaunch",
+        "launchPlayerApp pkg=$packageName ok=$launched keepFg=$keepPlayerForeground",
+    )
+    if (!launched) return
+
+    if (scheduleColdStartPlayRetry) {
+        SharedMediaControlService.scheduleColdStartPlayRetryIfNeeded(context.applicationContext, packageName)
+    }
+    if (scheduleLateSessionPlayRetry) {
+        SharedMediaControlService.scheduleLateSessionPlayRetryIfNeeded(context.applicationContext, packageName)
+    }
+}

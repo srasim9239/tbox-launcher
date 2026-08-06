@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+local.properties
+/build/
+**/build/
+.idea/
+.kotlin/
+.DS_Store
+.externalNativeBuild/
+.cxx/
+captures/
+
+# OTA staging (APK + version.json before/after Yandex upload)
+/ota-out/
+
+tools/__pycache__/

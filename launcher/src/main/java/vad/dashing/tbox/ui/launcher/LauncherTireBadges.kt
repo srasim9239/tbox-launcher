@@ -1,0 +1,247 @@
+package vad.dashing.tbox.ui.launcher
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import vad.dashing.tbox.R
+import vad.dashing.tbox.valueToString
+import kotlin.math.roundToInt
+
+/**
+ * OEM-style TPMS callouts beside the 3D car — only for wheels that need attention
+ * (`WarningSts != 0` or calibrating / invalid pressure).
+ */
+@Composable
+fun LauncherTireBadges(
+    state: LauncherTireState,
+    modifier: Modifier = Modifier,
+    wheelAnchorsPx: Map<LauncherWheelCorner, Offset> = emptyMap(),
+    showAll: Boolean = false,
+    compact: Boolean = false,
+) {
+    if (!showAll && !state.hasAttention) return
+
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        val boxWidthPx = with(density) { maxWidth.toPx() }
+        val boxHeightPx = with(density) { maxHeight.toPx() }
+        val badgeWidth = if (compact) 56.dp else 92.dp
+        val badgeHeight = if (compact) 26.dp else 62.dp
+        val badgeWidthPx = with(density) { badgeWidth.toPx() }
+        val badgeHeightPx = with(density) { badgeHeight.toPx() }
+        val visibleCorners = LauncherWheelCorner.entries.filter { corner ->
+            val wheel = state.wheel(corner)
+            if (showAll) {
+                wheel.available
+            } else {
+                wheel.needsAttention
+            }
+        }
+        val layout = layoutTireCallouts(
+            corners = visibleCorners,
+            anchors = wheelAnchorsPx,
+            containerWidth = boxWidthPx,
+            containerHeight = boxHeightPx,
+            calloutWidth = badgeWidthPx,
+            calloutHeight = badgeHeightPx,
+            gap = with(density) { 8.dp.toPx() },
+        )
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            visibleCorners.forEach { corner ->
+                val anchor = wheelAnchorsPx[corner] ?: return@forEach
+                val rect = layout[corner] ?: return@forEach
+                val endX = if (rect.left < anchor.x) rect.left + rect.width else rect.left
+                val wheel = state.wheel(corner)
+                drawLine(
+                    color = if (wheel.warningSts != 0) {
+                        LauncherColors.WarningRed.copy(alpha = 0.85f)
+                    } else {
+                        LauncherColors.AccentCyan.copy(alpha = 0.55f)
+                    },
+                    start = anchor,
+                    end = Offset(endX, rect.top + rect.height / 2f),
+                    strokeWidth = with(density) { 1.5.dp.toPx() },
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+        for (corner in visibleCorners) {
+            val rect = layout[corner] ?: continue
+            LauncherTireBadge(
+                corner = corner,
+                wheel = state.wheel(corner),
+                compact = compact,
+                modifier = Modifier
+                    .offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }
+                    .width(badgeWidth),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherTireBadge(
+    corner: LauncherWheelCorner,
+    wheel: LauncherTireWheelState,
+    compact: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val label = stringResource(
+        when (corner) {
+            LauncherWheelCorner.FL -> R.string.launcher_vs_wheel_fl
+            LauncherWheelCorner.FR -> R.string.launcher_vs_wheel_fr
+            LauncherWheelCorner.RL -> R.string.launcher_vs_wheel_rl
+            LauncherWheelCorner.RR -> R.string.launcher_vs_wheel_rr
+        },
+    )
+    val tint = when {
+        wheel.warningSts != 0 ||
+            (wheel.pressureBar != null && wheel.pressureBar < LauncherTireWheelState.LOW_PRESSURE_BAR) ->
+            LauncherColors.WarningRed
+        wheel.calibrating || (wheel.available && wheel.pressureBar == null) ->
+            LauncherColors.WarningAmber
+        wheel.available -> LauncherColors.LeftTextPrimary
+        else -> LauncherColors.LeftTextSecondary
+    }
+    val pressureText = when {
+        !wheel.available || wheel.calibrating || wheel.pressureBar == null ->
+            stringResource(R.string.launcher_tire_invalid)
+        // Compact pill is too narrow for the unit — value alone stays on one line.
+        compact -> valueToString(wheel.pressureBar, 1)
+        else -> "${valueToString(wheel.pressureBar, 1)} ${stringResource(R.string.unit_bar)}"
+    }
+    val tempText = wheel.temperatureC
+        ?.takeIf { wheel.available && !wheel.calibrating }
+        ?.let { "$it${stringResource(R.string.unit_celsius)}" }
+
+    Column(
+        modifier = modifier
+            .background(Color(0xE6FFFFFF), RoundedCornerShape(8.dp))
+            .padding(
+                horizontal = if (compact) 6.dp else 8.dp,
+                vertical = if (compact) 3.dp else 5.dp,
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (!compact) {
+            Text(
+                text = label,
+                color = tint.copy(alpha = 0.85f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        Text(
+            text = pressureText,
+            color = tint,
+            fontSize = if (compact) 12.sp else 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+        if (!compact && tempText != null) {
+            Text(
+                text = tempText,
+                color = tint.copy(alpha = 0.9f),
+                fontSize = 11.sp,
+            )
+        }
+    }
+}
+
+internal data class TireCalloutRect(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+)
+
+/**
+ * Places callouts from projected wheel pivots, clamps them to bounds and resolves vertical
+ * collisions independently on each side. Fallback anchors are used only before the first frame.
+ */
+internal fun layoutTireCallouts(
+    corners: List<LauncherWheelCorner>,
+    anchors: Map<LauncherWheelCorner, Offset>,
+    containerWidth: Float,
+    containerHeight: Float,
+    calloutWidth: Float,
+    calloutHeight: Float,
+    gap: Float,
+): Map<LauncherWheelCorner, TireCalloutRect> {
+    if (
+        containerWidth <= 0f || containerHeight <= 0f ||
+        calloutWidth <= 0f || calloutHeight <= 0f
+    ) {
+        return emptyMap()
+    }
+    val margin = gap.coerceAtLeast(0f)
+    val maxLeft = (containerWidth - calloutWidth - margin).coerceAtLeast(margin)
+    val maxTop = (containerHeight - calloutHeight - margin).coerceAtLeast(margin)
+    val candidates = corners.associateWith { corner ->
+        val anchor = anchors[corner] ?: fallbackWheelAnchor(corner, containerWidth, containerHeight)
+        val onLeft = anchor.x < containerWidth / 2f
+        val left = if (onLeft) {
+            anchor.x - calloutWidth - gap
+        } else {
+            anchor.x + gap
+        }.coerceIn(margin, maxLeft)
+        TireCalloutRect(
+            left = left,
+            top = (anchor.y - calloutHeight / 2f).coerceIn(margin, maxTop),
+            width = calloutWidth,
+            height = calloutHeight,
+        )
+    }.toMutableMap()
+
+    candidates.keys.groupBy { candidates.getValue(it).left < containerWidth / 2f }
+        .values
+        .forEach { sideCorners ->
+            val sorted = sideCorners.sortedBy { candidates.getValue(it).top }
+            var nextTop = margin
+            sorted.forEach { corner ->
+                val rect = candidates.getValue(corner)
+                val top = rect.top.coerceAtLeast(nextTop).coerceAtMost(maxTop)
+                candidates[corner] = rect.copy(top = top)
+                nextTop = top + calloutHeight + gap
+            }
+            var previousTop = maxTop + calloutHeight + gap
+            sorted.asReversed().forEach { corner ->
+                val rect = candidates.getValue(corner)
+                val top = rect.top.coerceAtMost(previousTop - calloutHeight - gap)
+                    .coerceAtLeast(margin)
+                candidates[corner] = rect.copy(top = top)
+                previousTop = top
+            }
+        }
+    return candidates
+}
+
+private fun fallbackWheelAnchor(
+    corner: LauncherWheelCorner,
+    width: Float,
+    height: Float,
+): Offset = when (corner) {
+    LauncherWheelCorner.FL -> Offset(width * 0.34f, height * 0.32f)
+    LauncherWheelCorner.FR -> Offset(width * 0.66f, height * 0.32f)
+    LauncherWheelCorner.RL -> Offset(width * 0.34f, height * 0.68f)
+    LauncherWheelCorner.RR -> Offset(width * 0.66f, height * 0.68f)
+}

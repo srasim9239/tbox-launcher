@@ -1,0 +1,148 @@
+package vad.dashing.tbox
+
+import android.content.Intent
+import android.os.Bundle
+import android.util.Log
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import vad.dashing.tbox.ui.disposeAppLauncherPickerIconCache
+import vad.dashing.tbox.ui.launcher.LauncherOverlayElevator
+import vad.dashing.tbox.ui.launcher.LauncherAboutOverlayWindow
+import vad.dashing.tbox.ui.launcher.LauncherAppDrawerWindow
+import vad.dashing.tbox.ui.launcher.LauncherAppListVersion
+import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
+import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
+import vad.dashing.tbox.ui.launcher.dismissForeignFreeformTasks
+import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
+import vad.dashing.tbox.ui.launcher.goLauncherHome
+import androidx.compose.runtime.DisposableEffect
+
+/**
+ * Android HOME handler — Tesla-style launcher surface for the head unit.
+ */
+class LauncherHomeActivity : ComponentActivity() {
+
+    companion object {
+        private const val TAG = "LauncherHome"
+    }
+
+    private lateinit var settingsManager: SettingsManager
+    private lateinit var appDataManager: AppDataManager
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        LauncherHomeActivityHolder.instance = this
+        Log.w("LauncherAppLaunch", "LauncherHomeActivity onCreate v${BuildConfig.VERSION_NAME}")
+        // ActivityViewCapabilityProbe: construct+VD OK; startActivity on launchDisplayId still denied
+        // even with MANAGE_ACTIVITY_STACKS+ACTIVITY_EMBEDDING granted. Needs INJECT_EVENTS (signature).
+        applyLauncherWindowFlags()
+        ensureFreeformImmersivePolicy(this)
+        LauncherAppListVersion.ensurePackageChangeReceiver(applicationContext)
+        // After reinstall / process death OEM freeform stacks often survive alone on top.
+        // Delay slightly so WM finishes enumerating stacks post-install.
+        window.decorView.postDelayed({ dismissForeignFreeformTasks(this) }, 400L)
+
+        settingsManager = SettingsManager(this)
+        appDataManager = AppDataManager(this)
+
+        setContent {
+            DisposableEffect(Unit) {
+                onDispose { disposeAppLauncherPickerIconCache() }
+            }
+            Surface(modifier = Modifier.fillMaxSize()) {
+                TeslaLauncherScreen(
+                    settingsManager = settingsManager,
+                    appDataManager = appDataManager,
+                    onTboxRestart = { rebootTBox() },
+                    onTripFinishAndStart = {
+                        serviceCommand(BackgroundService.ACTION_TRIP_FINISH_AND_START, "", "")
+                    },
+                )
+            }
+        }
+        startBackgroundService()
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        LauncherHomeActivityHolder.instance = this
+        startBackgroundService()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        LauncherForegroundHandoff.restoreLauncherWindow()
+        window.decorView.visibility = android.view.View.VISIBLE
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_HOME)
+        ) {
+            Log.w(TAG, "onNewIntent HOME")
+            LauncherAppDrawerWindow.hide()
+            LauncherForegroundHandoff.restoreLauncherWindow()
+            goLauncherHome(this, fromHomeIntent = true)
+        }
+    }
+
+    override fun onDestroy() {
+        LauncherAppDrawerWindow.hide()
+        LauncherVehicleSettingsOverlayWindow.hide()
+        LauncherAboutOverlayWindow.hide()
+        runCatching { dismissForeignFreeformTasks(this) }
+        LauncherOverlayElevator.reset()
+        if (LauncherHomeActivityHolder.instance === this) {
+            LauncherHomeActivityHolder.instance = null
+        }
+        super.onDestroy()
+    }
+
+    private fun applyLauncherWindowFlags() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.statusBars())
+            show(WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private fun startBackgroundService() {
+        val intent = Intent(this, BackgroundService::class.java).apply {
+            action = BackgroundService.ACTION_START
+        }
+        try {
+            startForegroundService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start background service", e)
+        }
+    }
+
+    private fun serviceCommand(sendAction: String, extraName: String, extraValue: String) {
+        val intent = Intent(this, BackgroundService::class.java).apply {
+            action = sendAction
+            if (extraName.isNotEmpty() && extraValue.isNotEmpty()) {
+                putExtra(extraName, extraValue)
+            }
+        }
+        try {
+            startForegroundService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Service command failed", e)
+        }
+    }
+
+    private fun rebootTBox() {
+        serviceCommand(BackgroundService.ACTION_TBOX_REBOOT, "", "")
+    }
+}

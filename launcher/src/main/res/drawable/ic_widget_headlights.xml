@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <!-- Standard low-beam lamp silhouette. Mode is shown by the UI badge. -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M150,260L350,260Q400,260 435,295Q470,330 470,380L470,580Q470,630 435,665Q400,700 350,700L150,700L150,260ZM230,340L230,620L350,620Q367,620 378.5,608.5Q390,597 390,580L390,380Q390,363 378.5,351.5Q367,340 350,340L230,340ZM540,300L860,220L875,285L555,365L540,300ZM550,430L880,390L888,458L558,498L550,430ZM558,565L888,605L880,673L550,633L558,565Z" />
+</vector>
