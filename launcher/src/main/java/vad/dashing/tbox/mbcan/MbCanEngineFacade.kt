@@ -1,5 +1,6 @@
 package vad.dashing.tbox.mbcan
 
+import android.util.Log
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -20,6 +21,7 @@ sealed class MbCanAvailability {
 object MbCanEngineFacade {
     private const val ENGINE_CLASS = "com.mengbo.mbCan.MBCanEngine"
     private const val DATA_TYPE_CLASS = "com.mengbo.mbCan.defines.MBCanDataType"
+    private const val LOG_TAG = "TBoxCan"
 
     private val availabilityRef = AtomicReference<MbCanAvailability>(MbCanAvailability.Unknown)
     private var engineInstance: Any? = null
@@ -62,8 +64,10 @@ object MbCanEngineFacade {
         }
         return try {
             Class.forName(ENGINE_CLASS, false, MbCanEngineFacade::class.java.classLoader)
+            Log.i(LOG_TAG, "probeAvailability: engine class found")
             MbCanAvailability.Unknown
         } catch (t: Throwable) {
+            Log.w(LOG_TAG, "probeAvailability: ${t.javaClass.simpleName}: ${t.message}")
             MbCanAvailability.Unavailable("${t.javaClass.simpleName}: ${t.message ?: "unknown"}")
         }.also { availabilityRef.set(it) }
     }
@@ -108,9 +112,11 @@ object MbCanEngineFacade {
             cfgAudioDataType = java.lang.Enum.valueOf(dataTypeClass, "eMBCAN_CFG_AUDIO")
             initialized = true
             availabilityRef.set(MbCanAvailability.Available)
+            Log.i(LOG_TAG, "ensureInitialized: OK")
         } catch (t: Throwable) {
             initialized = false
             availabilityRef.set(MbCanAvailability.Unavailable("${t.javaClass.simpleName}: ${t.message ?: "unknown"}"))
+            Log.w(LOG_TAG, "ensureInitialized failed: ${t.javaClass.simpleName}: ${t.message}")
         }
         return availabilityRef.get()
     }

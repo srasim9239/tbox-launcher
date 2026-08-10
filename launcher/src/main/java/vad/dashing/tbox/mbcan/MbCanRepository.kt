@@ -253,10 +253,12 @@ object MbCanRepository {
             boundScope = scope
             _availability.value = MbCanEngineFacade.probeAvailability()
             MbCanDiagnostics.log("DEBUG", "bind() availability=${_availability.value}")
+            android.util.Log.i("TBoxCan", "bind() availability=${_availability.value}")
             MbCanJobManager.attach(scope)
             scheduleReapplyAllInterests()
         } catch (e: Exception) {
             MbCanDiagnostics.log("ERROR", "bind() failed: ${e.message}")
+            android.util.Log.w("TBoxCan", "bind() failed", e)
         }
     }
 
