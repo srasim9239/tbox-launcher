@@ -20,6 +20,7 @@ import vad.dashing.tbox.ui.launcher.LauncherAppListVersion
 import vad.dashing.tbox.ui.launcher.LauncherAppPickerOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherVehicleSettingsOverlayWindow
 import vad.dashing.tbox.ui.launcher.LauncherWifiApRepository
+import vad.dashing.tbox.ui.launcher.LauncherThemeState
 import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
 import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
 import vad.dashing.tbox.ui.launcher.dismissForeignFreeformTasks
@@ -58,6 +59,7 @@ class LauncherHomeActivity : ComponentActivity() {
 
         // SoftAP params are broadcast into mbCAN only for ~10–30 s after boot — poll eagerly.
         LauncherWifiApRepository.init(applicationContext)
+        LauncherThemeState.init(applicationContext)
         // Home-dock autostart shortcut (long-tap icon). Once per process start; delayed so
         // freeform machinery and the 400ms stack cleanup above settle first.
         if (!autostartFired) {

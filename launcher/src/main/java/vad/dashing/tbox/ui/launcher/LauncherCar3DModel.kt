@@ -81,6 +81,7 @@ fun LauncherCar3DModel(
     settingsUserScale: Float = 1f,
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit = {},
     onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit = {},
+    onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
     textureSurface: Boolean = false,
 ) {
@@ -118,6 +119,7 @@ fun LauncherCar3DModel(
             settingsUserScale = settingsUserScale,
             onWheelAnchorsChanged = onWheelAnchorsChanged,
             onDoorAnchorsChanged = onDoorAnchorsChanged,
+            onPdcRingsChanged = onPdcRingsChanged,
             onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
             textureSurface = textureSurface,
         )
@@ -145,6 +147,7 @@ private fun LauncherCarFilamentModel(
     settingsUserScale: Float,
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
     onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
+    onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit,
     onBodyRigAvailabilityChanged: (Boolean) -> Unit,
     textureSurface: Boolean = false,
 ) {
@@ -162,6 +165,7 @@ private fun LauncherCarFilamentModel(
     val settingsUserScaleRef = rememberUpdatedState(settingsUserScale)
     val anchorCallbackRef = rememberUpdatedState(onWheelAnchorsChanged)
     val doorAnchorCallbackRef = rememberUpdatedState(onDoorAnchorsChanged)
+    val pdcRingsCallbackRef = rememberUpdatedState(onPdcRingsChanged)
     val rigAvailabilityCallbackRef = rememberUpdatedState(onBodyRigAvailabilityChanged)
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
@@ -344,6 +348,13 @@ private fun LauncherCarFilamentModel(
                                 viewportWidthPx = viewport?.width ?: 0,
                                 viewportHeightPx = viewport?.height ?: 0,
                             ).orEmpty(),
+                        )
+                        pdcRingsCallbackRef.value(
+                            rigController?.projectPdcRings(
+                                cameraNode = cameraNode,
+                                viewportWidthPx = viewport?.width ?: 0,
+                                viewportHeightPx = viewport?.height ?: 0,
+                            ),
                         )
                     }
                 },

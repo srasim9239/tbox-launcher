@@ -25,6 +25,9 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -177,6 +180,57 @@ fun SimulationSectionCard(
                     active = LauncherDevVehicleState.gearSlotOverride,
                     onSelect = { LauncherDevVehicleState.setGearSlot(it) },
                 )
+
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.launcher_vs_sim_adas_header),
+                    color = SimulationRed,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_acc),
+                    active = LauncherDevVehicleState.adasCruiseActive,
+                    onClick = { LauncherDevVehicleState.toggleAdasCruise() },
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_lanes),
+                    active = LauncherDevVehicleState.adasLanesActive,
+                    onClick = { LauncherDevVehicleState.toggleAdasLanes() },
+                )
+                SimulationThreatRow(
+                    label = stringResource(R.string.launcher_vs_sim_bsd_left),
+                    level = LauncherDevVehicleState.adasBsdLeft,
+                    onClick = { LauncherDevVehicleState.cycleBsdLeft() },
+                )
+                SimulationThreatRow(
+                    label = stringResource(R.string.launcher_vs_sim_bsd_right),
+                    level = LauncherDevVehicleState.adasBsdRight,
+                    onClick = { LauncherDevVehicleState.cycleBsdRight() },
+                )
+                SimulationSliderRow(
+                    label = stringResource(R.string.launcher_vs_sim_front_object),
+                    value = LauncherDevVehicleState.adasFrontObjectM,
+                    range = 0f..120f,
+                    unit = "м",
+                    onValueChange = { LauncherDevVehicleState.setAdasFrontObject(it) },
+                )
+                SimulationSliderRow(
+                    label = stringResource(R.string.launcher_vs_sim_pdc_front),
+                    value = LauncherDevVehicleState.pdcFrontGroupValue(),
+                    range = 0f..150f,
+                    unit = "см",
+                    onValueChange = { LauncherDevVehicleState.setPdcFrontGroup(it) },
+                )
+                SimulationSliderRow(
+                    label = stringResource(R.string.launcher_vs_sim_pdc_rear),
+                    value = LauncherDevVehicleState.pdcRearGroupValue(),
+                    range = 0f..150f,
+                    unit = "см",
+                    onValueChange = { LauncherDevVehicleState.setPdcRearGroup(it) },
+                )
+                SimulationPdcChannelsBlock()
 
                 Spacer(Modifier.height(4.dp))
                 SimulationTireRow(
@@ -344,9 +398,110 @@ private fun SimulationSliderRow(
     }
 }
 
+/** Collapsible per-channel PDC sliders (12 ultrasonic channels). */
 @Composable
-private fun SimulationTireRow(
+private fun SimulationPdcChannelsBlock() {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 44.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(R.string.launcher_vs_sim_pdc_channels),
+            color = LauncherColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Icon(
+            if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+            null,
+            tint = SimulationRed,
+        )
+    }
+    if (!expanded) return
+
+    val channels = listOf(
+        LauncherPdcChannel.FrontSideLeft to R.string.launcher_pdc_fsl,
+        LauncherPdcChannel.FrontLeft to R.string.launcher_pdc_fl,
+        LauncherPdcChannel.FrontMidLeft to R.string.launcher_pdc_fml,
+        LauncherPdcChannel.FrontMidRight to R.string.launcher_pdc_fmr,
+        LauncherPdcChannel.FrontRight to R.string.launcher_pdc_fr,
+        LauncherPdcChannel.FrontSideRight to R.string.launcher_pdc_fsr,
+        LauncherPdcChannel.RearSideLeft to R.string.launcher_pdc_rsl,
+        LauncherPdcChannel.RearLeft to R.string.launcher_pdc_rl,
+        LauncherPdcChannel.RearMidLeft to R.string.launcher_pdc_rml,
+        LauncherPdcChannel.RearMidRight to R.string.launcher_pdc_rmr,
+        LauncherPdcChannel.RearRight to R.string.launcher_pdc_rr,
+        LauncherPdcChannel.RearSideRight to R.string.launcher_pdc_rsr,
+    )
+    channels.forEach { (channel, labelRes) ->
+        SimulationSliderRow(
+            label = stringResource(labelRes),
+            value = LauncherDevVehicleState.pdcChannelValue(channel),
+            range = 0f..150f,
+            unit = "см",
+            onValueChange = { LauncherDevVehicleState.setPdcChannel(channel, it) },
+        )
+    }
+}
+
+/** Tri-state BSD row: Off → Caution (amber) → Alert (red), tap cycles. */
+@Composable
+private fun SimulationThreatRow(
     label: String,
+    level: LauncherRearThreatLevel,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            color = LauncherColors.TextPrimary,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        val (text, color) = when (level) {
+            LauncherRearThreatLevel.Off ->
+                stringResource(R.string.launcher_vs_sim_threat_off) to LauncherColors.TextMuted
+            LauncherRearThreatLevel.Caution ->
+                stringResource(R.string.launcher_vs_sim_threat_caution) to Color(0xFFF59E0B)
+            LauncherRearThreatLevel.Alert ->
+                stringResource(R.string.launcher_vs_sim_threat_alert) to SimulationRed
+        }
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(color.copy(alpha = if (level == LauncherRearThreatLevel.Off) 0.25f else 0.85f))
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+        ) {
+            Text(
+                text = text,
+                color = LauncherColors.TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SimulationTireRow(    label: String,
     corner: LauncherWheelCorner,
 ) {
     val current = LauncherDevVehicleState.tirePressureOverride[corner] ?: 2.4f

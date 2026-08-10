@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -42,33 +43,39 @@ import vad.dashing.tbox.ui.theme.tboxTitle
  * scanning the QR with a phone; the link can also be copied or opened in a browser (if any).
  */
 @Composable
-fun LauncherDonationsSection(entries: List<DonationLinks.Entry>) {
+fun LauncherDonationsSection(
+    entries: List<DonationLinks.Entry>,
+    modifier: Modifier = Modifier,
+    @StringRes titleRes: Int = R.string.launcher_donate_title,
+    @StringRes subtitleRes: Int = R.string.launcher_donate_subtitle,
+) {
     if (entries.isEmpty()) return
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val copiedMessage = stringResource(R.string.launcher_donate_copied)
 
-    Text(
-        text = stringResource(R.string.launcher_donate_title),
-        style = MaterialTheme.typography.tboxTitle,
-        color = LauncherColors.TextPrimary,
-    )
-    Text(
-        text = stringResource(R.string.launcher_donate_subtitle),
-        style = MaterialTheme.typography.tboxBody,
-        color = LauncherColors.TextSecondary,
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        entries.forEach { entry ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(LauncherColors.CardDark.copy(alpha = 0.55f))
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(titleRes),
+            style = MaterialTheme.typography.tboxTitle,
+            color = LauncherColors.TextPrimary,
+        )
+        Text(
+            text = stringResource(subtitleRes),
+            style = MaterialTheme.typography.tboxBody,
+            color = LauncherColors.TextSecondary,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            entries.forEach { entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(LauncherColors.CardDark.copy(alpha = 0.55f))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                 val qr = rememberQrCode(entry.url, 84)
                 if (qr != null) {
                     Image(
@@ -126,6 +133,7 @@ fun LauncherDonationsSection(entries: List<DonationLinks.Entry>) {
                     }
                 }
             }
+        }
         }
     }
 }

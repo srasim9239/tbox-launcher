@@ -98,6 +98,7 @@ class LauncherCarRigController private constructor(
         localOffsetY = 0.28f,
     )
 
+
     private fun <K> projectAnchors(
         cameraNode: CameraNode,
         viewportWidthPx: Int,
@@ -147,6 +148,219 @@ class LauncherCarRigController private constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Projects three ground-plane rings (0.2 / 0.37 / 0.54 m beyond the body contour)
+     * as dense screen-space polylines (72 samples, each with its screen angle around
+     * the projected body center). Because the rings live in world space, the PDC band
+     * tilts and rotates together with the 3D model in any camera (top, drive, morph).
+     */
+    fun projectPdcRings(
+        cameraNode: CameraNode,
+        viewportWidthPx: Int,
+        viewportHeightPx: Int,
+    ): LauncherPdcRingFrame? {
+        if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return null
+        fun wheelWorld(name: String): FloatArray? {
+            val node = boundNodes[name] ?: return null
+            val world = FloatArray(16)
+            transformManager.getWorldTransform(node.instance, world)
+            return world
+        }
+        val fl = wheelWorld(WHEEL_FL) ?: return null
+        val fr = wheelWorld(WHEEL_FR) ?: return null
+        val rl = wheelWorld(WHEEL_RL) ?: return null
+        val rr = wheelWorld(WHEEL_RR) ?: return null
+
+        val frontX = (fl[12] + fr[12]) / 2f
+        val frontZ = (fl[14] + fr[14]) / 2f
+        val rearX = (rl[12] + rr[12]) / 2f
+        val rearZ = (rl[14] + rr[14]) / 2f
+        val groundY = (fl[13] + fr[13] + rl[13] + rr[13]) / 4f + 0.05f
+
+        var fwdX = frontX - rearX
+        var fwdZ = frontZ - rearZ
+        val wheelbase = kotlin.math.hypot(fwdX.toDouble(), fwdZ.toDouble()).toFloat()
+        if (wheelbase < 0.1f) return null
+        fwdX /= wheelbase
+        fwdZ /= wheelbase
+        val leftX = -fwdZ
+        val leftZ = fwdX
+        val halfTrack = kotlin.math.hypot(
+            (fl[12] - fr[12]).toDouble(),
+            (fl[14] - fr[14]).toDouble(),
+        ).toFloat() / 2f
+        if (halfTrack < 0.05f) return null
+
+        val cxW = (frontX + rearX) / 2f
+        val czW = (frontZ + rearZ) / 2f
+        val worldPerMeter = wheelbase / 2.72f
+        // Ring silhouette: nearly circular (95% blend toward a circle) — a clean round
+        // sonar band instead of a body-tracing ellipse.
+        val semiLen = wheelbase * 0.98f * 1.1f
+        val semiWidBody = halfTrack * 1.55f * 1.1f
+        val semiWid = semiWidBody + (semiLen - semiWidBody) * 0.95f
+        // Tighter radial spacing + thicker strokes (overlay) make the band read as a
+        // solid strip instead of three sparse hairlines.
+        val ringOffsetsM = floatArrayOf(0.16f, 0.30f, 0.44f)
+        // The rear hemisphere matters most when parking, so the band reaches further
+        // behind the car (up to +45% at the straight-back direction, easing to 0 at
+        // the sides and front).
+        val rearBoostMax = 0.45f
+
+        val cameraPosition = cameraNode.worldPosition
+        val cameraForward = cameraNode.forwardDirection
+
+        fun project(wx: Float, wy: Float, wz: Float): Offset? {
+            val depth =
+                (wx - cameraPosition.x) * cameraForward.x +
+                    (wy - cameraPosition.y) * cameraForward.y +
+                    (wz - cameraPosition.z) * cameraForward.z
+            if (!depth.isFinite() || depth <= cameraNode.near) return null
+            val screen = cameraNode.worldToScreenPoint(Vector3(wx, wy, wz))
+            if (!screen.x.isFinite() || !screen.y.isFinite()) return null
+            return Offset(
+                screen.x.coerceIn(-viewportWidthPx * 0.5f, viewportWidthPx * 1.5f),
+                screen.y.coerceIn(-viewportHeightPx * 0.5f, viewportHeightPx * 1.5f),
+            )
+        }
+
+        val center = project(cxW, groundY, czW) ?: return null
+        // Keep the ellipse centered in the horizontal screen axis of the body: the
+        // centroid depth better matches the visible body than the ground plane.
+        val centerBodyY = groundY + 0.30f * worldPerMeter
+        val centerBody = project(cxW, centerBodyY, czW)
+        val cyShift = if (centerBody != null) centerBody.y - center.y else 0f
+        val ringCenter = Offset(center.x, center.y + cyShift)
+
+        // The asset's wheel naming is the source of truth for nose vs tail here: a
+        // screen-based check flips in frames where the camera looks at the car from
+        // the front (settings orbit), which would swap the front and rear zones.
+        val frontScreen = project(frontX, groundY, frontZ)
+        val rearScreen = project(rearX, groundY, rearZ)
+
+        // Sensor zone centers in world angle space (0° = straight ahead, 180° =
+        // straight back, positive toward the left side). Camera-independent, so the
+        // zones stay correct in every camera mode (top view, drive chase cam, settings)
+        // — unlike screen-projected anchors, which fall out of the viewport in the
+        // chase camera and used to silently kill the rear band while driving.
+        val frontBx = frontX + fwdX * wheelbase * 0.33f
+        val frontBz = frontZ + fwdZ * wheelbase * 0.33f
+        val rearBx = rearX - fwdX * wheelbase * 0.31f
+        val rearBz = rearZ - fwdZ * wheelbase * 0.31f
+        // Physically the bumper sensors span barely ±17° as seen from the body center,
+        // which would squeeze all six zones into a stub of arc. Fan them out around the
+        // straight-ahead / straight-back axis so each zone gets a readable slice. The
+        // front pair sits close to the nose, so it needs far less spread than the rear.
+        val rearFanout = 2.6f
+        val frontFanout = 1.15f
+        fun thetaOf(bx: Float, bz: Float, lateralFrac: Float, rear: Boolean): Float {
+            val px = bx + leftX * halfTrack * lateralFrac - cxW
+            val pz = bz + leftZ * halfTrack * lateralFrac - czW
+            val raw = Math.toDegrees(
+                kotlin.math.atan2(
+                    (px * leftX + pz * leftZ).toDouble(),
+                    (px * fwdX + pz * fwdZ).toDouble(),
+                ),
+            ).toFloat()
+            // Anchor the fan on whichever axis the sensor actually faces, so a mirrored
+            // basis can never push the result outside ±180°.
+            val axis = if (kotlin.math.abs(raw) <= 90f) 0f else if (raw >= 0f) 180f else -180f
+            val fanned = axis + (raw - axis) * (if (rear) rearFanout else frontFanout)
+            return ((fanned + 180f).mod(360f)) - 180f
+        }
+        val channelAngles = mapOf(
+            LauncherPdcChannel.FrontSideLeft to thetaOf(frontBx, frontBz, 0.85f, rear = false),
+            LauncherPdcChannel.FrontLeft to thetaOf(frontBx, frontBz, 0.52f, rear = false),
+            LauncherPdcChannel.FrontMidLeft to thetaOf(frontBx, frontBz, 0.18f, rear = false),
+            LauncherPdcChannel.FrontMidRight to thetaOf(frontBx, frontBz, -0.18f, rear = false),
+            LauncherPdcChannel.FrontRight to thetaOf(frontBx, frontBz, -0.52f, rear = false),
+            LauncherPdcChannel.FrontSideRight to thetaOf(frontBx, frontBz, -0.85f, rear = false),
+            LauncherPdcChannel.RearSideLeft to thetaOf(rearBx, rearBz, 0.85f, rear = true),
+            LauncherPdcChannel.RearLeft to thetaOf(rearBx, rearBz, 0.52f, rear = true),
+            LauncherPdcChannel.RearMidLeft to thetaOf(rearBx, rearBz, 0.18f, rear = true),
+            LauncherPdcChannel.RearMidRight to thetaOf(rearBx, rearBz, -0.18f, rear = true),
+            LauncherPdcChannel.RearRight to thetaOf(rearBx, rearBz, -0.52f, rear = true),
+            LauncherPdcChannel.RearSideRight to thetaOf(rearBx, rearBz, -0.85f, rear = true),
+        )
+
+        // 1° sampling: a 10°-wide zone still yields a smooth polyline. At the previous
+        // 5° step a narrow zone could capture a single point and vanish entirely.
+        val samples = 360
+        val rings = ringOffsetsM.map { offsetM ->
+            val offset = offsetM * worldPerMeter
+            (0 until samples).mapNotNull { i ->
+                val theta = (i.toFloat() / samples) * (2f * PI.toFloat())
+                val dirX = fwdX * cos(theta) + leftX * sin(theta)
+                val dirZ = fwdZ * cos(theta) + leftZ * sin(theta)
+                val cosT = cos(theta)
+                val sinT = sin(theta)
+                val bodyR = (semiLen * semiWid) /
+                    kotlin.math.sqrt(
+                        (semiWid * cosT) * (semiWid * cosT) +
+                            (semiLen * sinT) * (semiLen * sinT),
+                    )
+                val rearBoost = 1f + rearBoostMax * maxOf(0f, -cosT)
+                val radius = bodyR + offset * rearBoost
+                val pt = project(cxW + dirX * radius, groundY, czW + dirZ * radius)
+                    ?: return@mapNotNull null
+                val shifted = Offset(pt.x, pt.y + cyShift)
+                Math.toDegrees(theta.toDouble()).toFloat() to shifted
+            }
+        }
+
+        // Stroke scale: screen px per world metre near the band, estimated from the
+        // projected inner/outer ring spacing. Perspective makes it differ between the
+        // front and the rear, so both are measured (whichever end is off-camera falls
+        // back to the other).
+        fun pxPerMeterAt(thetaDeg: Float): Float {
+            val inner = rings.firstOrNull()
+            val outer = rings.lastOrNull()
+            if (inner.isNullOrEmpty() || outer.isNullOrEmpty()) return 0f
+            val a = inner.minByOrNull { pdcAngularDiffDeg(it.first, thetaDeg) }?.second
+                ?: return 0f
+            val b = outer.minByOrNull { pdcAngularDiffDeg(it.first, thetaDeg) }?.second
+                ?: return 0f
+            val thetaRad = Math.toRadians(thetaDeg.toDouble())
+            val boost = 1f + rearBoostMax * maxOf(0f, -cos(thetaRad).toFloat())
+            val spanM = (ringOffsetsM.last() - ringOffsetsM.first()) * boost
+            val distPx = kotlin.math.hypot(
+                (b.x - a.x).toDouble(),
+                (b.y - a.y).toDouble(),
+            ).toFloat()
+            return if (spanM > 0f) distPx / spanM else 0f
+        }
+        var pxFront = pxPerMeterAt(0f)
+        var pxRear = pxPerMeterAt(180f)
+        if (pxFront <= 0f) pxFront = pxRear
+        if (pxRear <= 0f) pxRear = pxFront
+        if (pxFront <= 0f) {
+            pxFront = 80f
+            pxRear = 80f
+        }
+
+        return LauncherPdcRingFrame(
+            center = ringCenter,
+            rings = rings,
+            channelAngles = channelAngles,
+            pxPerMeterFront = pxFront,
+            pxPerMeterRear = pxRear,
+        ).also {
+            logPdcOk(rings.minOf { it.size })
+            logPdcBasis(
+                frontScreenY = frontScreen?.y,
+                rearScreenY = rearScreen?.y,
+                rearMidLeftDeg = channelAngles[LauncherPdcChannel.RearMidLeft],
+                frontMidLeftDeg = channelAngles[LauncherPdcChannel.FrontMidLeft],
+            )
+        }
+    }
+
+    private fun pdcAngularDiffDeg(a: Float, b: Float): Float {
+        var d = kotlin.math.abs(a - b) % 360f
+        if (d > 180f) d = 360f - d
+        return d
     }
 
     private fun setRotation(name: String, axis: RigAxis, radians: Float) {
@@ -255,6 +469,40 @@ class LauncherCarRigController private constructor(
             TAILGATE to floatArrayOf(1.39406f, 1.60524f, 0.36237f),
         )
         private val loggedMissingNodes = mutableSetOf<String>()
+
+        private var lastPdcDropLogMs = 0L
+        private var lastPdcOkLogMs = 0L
+        private var lastPdcBasisLogMs = 0L
+
+        fun logPdcDrop(reason: String) {
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastPdcDropLogMs < 2000L) return
+            lastPdcDropLogMs = now
+            Log.w("LauncherPdc", "PdcAnchors dropped: $reason")
+        }
+
+        fun logPdcOk(count: Int) {
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastPdcOkLogMs < 5000L) return
+            lastPdcOkLogMs = now
+            Log.i("LauncherPdc", "PdcAnchors/rings projected: $count")
+        }
+
+        fun logPdcBasis(
+            frontScreenY: Float?,
+            rearScreenY: Float?,
+            rearMidLeftDeg: Float?,
+            frontMidLeftDeg: Float?,
+        ) {
+            val now = android.os.SystemClock.uptimeMillis()
+            if (now - lastPdcBasisLogMs < 5000L) return
+            lastPdcBasisLogMs = now
+            Log.i(
+                "LauncherPdc",
+                "basis frontY=$frontScreenY rearY=$rearScreenY " +
+                    "rearMidLeft=$rearMidLeftDeg frontMidLeft=$frontMidLeftDeg",
+            )
+        }
 
         fun bind(engine: Engine, modelInstance: FilamentInstance): LauncherCarRigController {
             val manager = engine.transformManager

@@ -399,7 +399,21 @@ fun LauncherSettingsScreen(
             }
         }
 
-        LauncherDonationsSection(entries = remember { DonationLinks.entries })
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            LauncherDonationsSection(
+                entries = remember { DonationLinks.entries },
+                modifier = Modifier.weight(1f),
+            )
+            LauncherDonationsSection(
+                entries = remember { DonationLinks.feedbackEntries },
+                modifier = Modifier.weight(1f),
+                titleRes = R.string.launcher_feedback_title,
+                subtitleRes = R.string.launcher_feedback_subtitle,
+            )
+        }
     }
 }
 

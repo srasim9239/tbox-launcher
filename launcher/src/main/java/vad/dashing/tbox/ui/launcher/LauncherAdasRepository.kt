@@ -25,6 +25,12 @@ object LauncherAdasRepository {
     private var bsdListenerProxy: Any? = null
     private var rctaListenerProxy: Any? = null
     private var dowListenerProxy: Any? = null
+    private var radarListenerProxy: Any? = null
+    // Startup garbage filter: vendor stack emits transient radar frames right after
+    // registration — ignore the first frames and require two consecutive identical
+    // frames before a reading becomes visible.
+    private var radarGraceUntilMs = 0L
+    private var radarPending: LauncherPdcZones? = null
 
     private val _state = MutableStateFlow(LauncherAdasState())
     val state: StateFlow<LauncherAdasState> = _state.asStateFlow()
@@ -56,6 +62,7 @@ object LauncherAdasRepository {
     private var srrSystemState: Byte = 0
     private var tsrSign: LauncherAdasTsrSign = LauncherAdasTsrSign()
     private var rearThreats: LauncherRearThreats = LauncherRearThreats()
+    private var pdcZones: LauncherPdcZones = LauncherPdcZones()
 
     private val tsrWatchdog = TsrStaleWatchdog {
         tsrSign = LauncherAdasTsrSign()
@@ -73,11 +80,13 @@ object LauncherAdasRepository {
         registerBsdListener()
         registerRctaListener()
         registerDowListener()
+        registerRadarListener()
         active = frmInfoListenerProxy != null ||
             lkaStatusListenerProxy != null ||
             bsdListenerProxy != null ||
             rctaListenerProxy != null ||
-            dowListenerProxy != null
+            dowListenerProxy != null ||
+            radarListenerProxy != null
     }
 
     fun stop() {
@@ -87,6 +96,7 @@ object LauncherAdasRepository {
         unregisterBsdListener()
         unregisterRctaListener()
         unregisterDowListener()
+        unregisterRadarListener()
         MbAdasTsrFacade.stop()
         tsrWatchdog.cancel()
         active = false
@@ -299,6 +309,75 @@ object LauncherAdasRepository {
         dowListenerProxy = null
     }
 
+    private fun registerRadarListener() {
+        if (radarListenerProxy != null) return
+        val inst = engineInstance() ?: return
+        val iface = runCatching {
+            Class.forName("com.mengbo.mbCan.interfaces.IMbCanRadarSensorCallback")
+        }.getOrNull() ?: return
+        val loader = iface.classLoader ?: return
+        val handler = InvocationHandler { _, method, args ->
+            if (method.name == "onRadarSensorChange" && args?.isNotEmpty() == true) {
+                parseRadarSensor(args[0])?.let { zones ->
+                    val now = android.os.SystemClock.uptimeMillis()
+                    if (now >= radarGraceUntilMs) {
+                        if (zones == radarPending || zones == pdcZones) {
+                            // Stable reading (or already published) — show it.
+                            pdcZones = zones
+                            publish()
+                        }
+                        radarPending = zones
+                    }
+                }
+            }
+            null
+        }
+        val proxy = Proxy.newProxyInstance(loader, arrayOf(iface), handler)
+        runCatching {
+            Class.forName(ENGINE_CLASS)
+                .getMethod("registRadarSensorListener", iface)
+                .invoke(inst, proxy)
+            radarListenerProxy = proxy
+            radarGraceUntilMs = android.os.SystemClock.uptimeMillis() + 2500L
+            radarPending = null
+        }
+    }
+
+    private fun unregisterRadarListener() {
+        val inst = engineInstance()
+        if (inst != null && radarListenerProxy != null) {
+            runCatching {
+                Class.forName(ENGINE_CLASS).getMethod("unregistRadarSensorListener").invoke(inst)
+            }
+        }
+        radarListenerProxy = null
+        radarGraceUntilMs = 0L
+        radarPending = null
+    }
+
+    private fun intField(obj: Any, getter: String): Int =
+        runCatching {
+            (obj.javaClass.getMethod(getter).invoke(obj) as? Number)?.toInt() ?: 0
+        }.getOrDefault(0)
+
+    private fun parseRadarSensor(raw: Any?): LauncherPdcZones? = runCatching {
+        val sensor = raw ?: return null
+        LauncherPdcZones(
+            frontSideLeftCm = intField(sensor, "getLHSF_Distance"),
+            frontLeftCm = intField(sensor, "getLHF_Distance"),
+            frontMidLeftCm = intField(sensor, "getLHMF_Distance"),
+            frontMidRightCm = intField(sensor, "getRHMF_Distance"),
+            frontRightCm = intField(sensor, "getRHF_Distance"),
+            frontSideRightCm = intField(sensor, "getRHSF_Distance"),
+            rearSideLeftCm = intField(sensor, "getLHSR_Distance"),
+            rearLeftCm = intField(sensor, "getLHR_Distance"),
+            rearMidLeftCm = intField(sensor, "getLHMR_Distance"),
+            rearMidRightCm = intField(sensor, "getRHMR_Distance"),
+            rearRightCm = intField(sensor, "getRHR_Distance"),
+            rearSideRightCm = intField(sensor, "getRHSR_Distance"),
+        )
+    }.getOrNull()
+
     private fun byteField(obj: Any, getter: String): Byte =
         runCatching {
             (obj.javaClass.getMethod(getter).invoke(obj) as? Number)?.toByte() ?: 0
@@ -425,6 +504,7 @@ object LauncherAdasRepository {
             timeGapFlashUntilMs = timeGapFlashUntilMs,
             tsr = tsrSign,
             rearThreats = rearThreats,
+            pdc = pdcZones,
             hmaRaw = lkaHma,
             tjaRaw = lkaTja,
             srrSystemRaw = srrSystemState,
@@ -456,5 +536,6 @@ object LauncherAdasRepository {
         srrSystemState = 0
         tsrSign = LauncherAdasTsrSign()
         rearThreats = LauncherRearThreats()
+        pdcZones = LauncherPdcZones()
     }
 }

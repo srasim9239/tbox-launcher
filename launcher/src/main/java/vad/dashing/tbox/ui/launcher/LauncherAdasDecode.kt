@@ -171,6 +171,8 @@ data class LauncherAdasState(
     val tsr: LauncherAdasTsrSign = LauncherAdasTsrSign(),
     /** Blind-spot / rear-cross / door-open / rear-collision from SRR. */
     val rearThreats: LauncherRearThreats = LauncherRearThreats(),
+    /** Ultrasonic parking sensors (12 channels collapsed to 6 display zones). */
+    val pdc: LauncherPdcZones = LauncherPdcZones(),
     /** Adaptive high beam (HMA) — AIService beamLight. */
     val hma: LauncherAdasAssistIcon = LauncherAdasAssistIcon.Hidden,
     /** Traffic jam / ICA assist — AIService tjaIcaIcon. */
@@ -264,6 +266,7 @@ internal fun buildLauncherAdasState(
     slaSpdLimitWarningRaw: Byte,
     tsr: LauncherAdasTsrSign = LauncherAdasTsrSign(),
     rearThreats: LauncherRearThreats = LauncherRearThreats(),
+    pdc: LauncherPdcZones = LauncherPdcZones(),
     hmaRaw: Byte = 0,
     tjaRaw: Byte = 0,
     srrSystemRaw: Byte = 0,
@@ -347,6 +350,7 @@ internal fun buildLauncherAdasState(
         speedLimitWarning = slaWarn,
         tsr = tsr,
         rearThreats = rearThreats,
+        pdc = pdc,
         hma = hma,
         tja = tja,
         srrSystem = srrSystem,
@@ -381,4 +385,95 @@ internal fun distanceToRoadDepth(distanceM: Int): Float {
     val t = (clamped - 5f) / 115f // 0 = near, 1 = far
     // Near (~5 м) → 0.40, far (~120 м) → 0.14 — never into the 3D car zone.
     return (0.40f - t * 0.26f).coerceIn(0.12f, 0.42f)
+}
+
+/** Parking-sensor urgency buckets derived from the raw centimetre distance. */
+enum class LauncherPdcLevel {
+    None,
+    Far,
+    Mid,
+    Near,
+}
+
+/** Individual ultrasonic channels of MBCanRadarSensor (12 total). */
+enum class LauncherPdcChannel {
+    FrontSideLeft,
+    FrontLeft,
+    FrontMidLeft,
+    FrontMidRight,
+    FrontRight,
+    FrontSideRight,
+    RearSideLeft,
+    RearLeft,
+    RearMidLeft,
+    RearMidRight,
+    RearRight,
+    RearSideRight,
+}
+
+/**
+ * Ultrasonic park sensors ([com.mengbo.mbCan.entity.MBCanRadarSensor], 12 channels).
+ * Each channel renders as its own sonar arc; channels reporting 0 stay hidden,
+ * so different trims (4 rear + 2 diagonal front on Dashing) show only real sensors.
+ * Distances are centimetres; 0 means "nothing detected".
+ */
+data class LauncherPdcZones(
+    /** Front corner, facing sideways-diagonal (LHSF). */
+    val frontSideLeftCm: Int = 0,
+    val frontLeftCm: Int = 0,
+    val frontMidLeftCm: Int = 0,
+    val frontMidRightCm: Int = 0,
+    val frontRightCm: Int = 0,
+    /** Front corner, facing sideways-diagonal (RHSF). */
+    val frontSideRightCm: Int = 0,
+    /** Rear corner, facing sideways-diagonal (LHSR). */
+    val rearSideLeftCm: Int = 0,
+    val rearLeftCm: Int = 0,
+    val rearMidLeftCm: Int = 0,
+    val rearMidRightCm: Int = 0,
+    val rearRightCm: Int = 0,
+    /** Rear corner, facing sideways-diagonal (RHSR). */
+    val rearSideRightCm: Int = 0,
+) {
+    private val all: List<Int>
+        get() = listOf(
+            frontSideLeftCm, frontLeftCm, frontMidLeftCm,
+            frontMidRightCm, frontRightCm, frontSideRightCm,
+            rearSideLeftCm, rearLeftCm, rearMidLeftCm,
+            rearMidRightCm, rearRightCm, rearSideRightCm,
+        )
+
+    val hasAny: Boolean get() = all.any { it in 1..PDC_MAX_CM }
+
+    val nearestCm: Int get() = all.filter { it in 1..PDC_MAX_CM }.minOrNull() ?: 0
+
+    fun distanceCm(channel: LauncherPdcChannel): Int = when (channel) {
+        LauncherPdcChannel.FrontSideLeft -> frontSideLeftCm
+        LauncherPdcChannel.FrontLeft -> frontLeftCm
+        LauncherPdcChannel.FrontMidLeft -> frontMidLeftCm
+        LauncherPdcChannel.FrontMidRight -> frontMidRightCm
+        LauncherPdcChannel.FrontRight -> frontRightCm
+        LauncherPdcChannel.FrontSideRight -> frontSideRightCm
+        LauncherPdcChannel.RearSideLeft -> rearSideLeftCm
+        LauncherPdcChannel.RearLeft -> rearLeftCm
+        LauncherPdcChannel.RearMidLeft -> rearMidLeftCm
+        LauncherPdcChannel.RearMidRight -> rearMidRightCm
+        LauncherPdcChannel.RearRight -> rearRightCm
+        LauncherPdcChannel.RearSideRight -> rearSideRightCm
+    }
+
+    companion object {
+        /** Above this the sensor reports free space. */
+        const val PDC_MAX_CM = 150
+        const val PDC_NEAR_CM = 35
+        const val PDC_MID_CM = 75
+
+            fun levelFor(distanceCm: Int): LauncherPdcLevel = when {
+                // 150 cm and 0 both mean "free space" in practice (0 = no reading).
+                distanceCm !in 1 until PDC_MAX_CM -> LauncherPdcLevel.None
+                distanceCm <= PDC_NEAR_CM -> LauncherPdcLevel.Near
+                distanceCm <= PDC_MID_CM -> LauncherPdcLevel.Mid
+                else -> LauncherPdcLevel.Far
+            }
+    }
 }

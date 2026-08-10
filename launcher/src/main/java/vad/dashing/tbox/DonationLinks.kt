@@ -23,4 +23,13 @@ object DonationLinks {
             url = "https://www.tbank.ru/cf/jle4TITNel",
         ),
     )
+
+    /** Feedback channels (not donations) shown in the About console. */
+    val feedbackEntries: List<Entry> = listOf(
+        Entry(
+            title = "Telegram-бот обратной связи",
+            subtitle = "@Dashing_Club_Launcher_bot — идеи, баги, рекомендации",
+            url = "https://t.me/Dashing_Club_Launcher_bot",
+        ),
+    )
 }

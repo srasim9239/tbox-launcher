@@ -2,18 +2,33 @@ package vad.dashing.tbox.ui.launcher
 
 import androidx.compose.ui.graphics.Color
 
-/** Tesla reference palette. */
+/** Tesla reference palette. Left-panel colors follow [LauncherThemeState.darkTheme]. */
 object LauncherColors {
     val AccentCyan = Color(0xFF0BE4FF)
     val AccentBlue = Color(0xFF3B82F6)
 
-    // Left panel (light)
-    val LeftPanelBg = Color(0xFFF4F5F7)
-    val LeftPanelCard = Color(0xFFFFFFFF)
-    val LeftTextPrimary = Color(0xFF111827)
-    val LeftTextSecondary = Color(0xFF6B7280)
-    val GearActive = Color(0xFF111827)
-    val GearInactive = Color(0xFFD1D5DB)
+    // Left panel — light theme (default) / dark theme (optional, Tesla night style)
+    private val LightPanelBg = Color(0xFFF4F5F7)
+    private val LightPanelCard = Color(0xFFFFFFFF)
+    private val LightTextPrimary = Color(0xFF111827)
+    private val LightTextSecondary = Color(0xFF6B7280)
+    private val LightGearActive = Color(0xFF111827)
+    private val LightGearInactive = Color(0xFFD1D5DB)
+
+    private val DarkPanelBg = Color(0xFF161D28)
+    private val DarkPanelCard = Color(0xFF232D3B)
+    private val DarkTextPrimary = Color(0xFFF3F4F6)
+    private val DarkTextSecondary = Color(0xFF9AA4B2)
+    private val DarkGearActive = Color(0xFFF3F4F6)
+    private val DarkGearInactive = Color(0xFF5B6675)
+
+    val LeftPanelBg: Color get() = if (LauncherThemeState.darkTheme) DarkPanelBg else LightPanelBg
+    val LeftPanelCard: Color get() = if (LauncherThemeState.darkTheme) DarkPanelCard else LightPanelCard
+    val LeftTextPrimary: Color get() = if (LauncherThemeState.darkTheme) DarkTextPrimary else LightTextPrimary
+    val LeftTextSecondary: Color get() = if (LauncherThemeState.darkTheme) DarkTextSecondary else LightTextSecondary
+    val GearActive: Color get() = if (LauncherThemeState.darkTheme) DarkGearActive else LightGearActive
+    val GearInactive: Color get() = if (LauncherThemeState.darkTheme) DarkGearInactive else LightGearInactive
+
     val WarningAmber = Color(0xFFD97706)
     val WarningRed = Color(0xFFDC2626)
 

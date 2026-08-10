@@ -613,6 +613,8 @@ object MbCanRepository {
                 refreshSignal(command.signal)
                 MbCanCommandResult(true, "Refresh requested")
             }
+        }.also { result ->
+            android.util.Log.i("TBoxCan", "execute $command -> ok=${result.success} msg=${result.message}")
         }
     }
 
@@ -656,6 +658,8 @@ object MbCanRepository {
             ?: return MbCanCommandResult(false, "No command policy for propertyId=$propertyId")
         val allowedValues = when (val policy = spec.policy) {
             is MbCanCommandPolicy.SetExact -> policy.allowedValues
+            // Explicit on/off writes are valid for binary toggles (e.g. fog-light switch in settings UI).
+            is MbCanCommandPolicy.ToggleBinary -> setOf(policy.offValue, policy.onValue)
             // Allow explicit blow-mode writes (cycle) while keeping toggle policy for front defrost.
             is MbCanCommandPolicy.ToggleHvacFrontDefrost -> setOf(
                 MbCanKnownVehiclePropertyId.HVAC_FAN_DIRECTION_FACE,

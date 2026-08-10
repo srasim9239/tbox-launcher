@@ -47,8 +47,10 @@ private fun DrawScope.drawRearThreats(threats: LauncherRearThreats) {
         val base = fillColor(level) ?: return@forEach
         val zoneW = w * 0.20f
         val zoneH = h * 0.28f
-        val left = cx + side * (bodyHalfW * 0.55f) - if (side < 0f) zoneW else 0f
-        val top = cy - zoneH * 0.35f
+        // BSD/RCTA идут сзади: центр зоны — на заднем углу кузова по диагонали,
+        // а не на уровне середины борта (иначе читается как «преграда сбоку»).
+        val left = cx + side * (bodyHalfW * 0.45f) - if (side < 0f) zoneW else 0f
+        val top = cy + zoneH * 0.20f
         val center = Offset(left + zoneW / 2f, top + zoneH / 2f)
         drawOval(
             brush = Brush.radialGradient(

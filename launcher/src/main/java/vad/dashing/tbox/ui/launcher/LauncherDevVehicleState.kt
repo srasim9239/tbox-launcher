@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import vad.dashing.tbox.mbcan.VehicleBodyState
+import kotlin.math.roundToInt
 
 /** Debug overrides for launcher vehicle animation when not in the car. */
 object LauncherDevVehicleState {
@@ -26,6 +27,147 @@ object LauncherDevVehicleState {
     var batteryVoltageOverride by mutableStateOf<Float?>(null)
     /** 'P'/'R'/'N'/'D' override; null = real gearbox state. */
     var gearSlotOverride by mutableStateOf<Char?>(null)
+
+    // --- ADAS simulation (cruise / lanes / BSD / front object / parking sensors) ---
+    var adasCruiseActive by mutableStateOf(false)
+    var adasLanesActive by mutableStateOf(false)
+    var adasBsdLeft by mutableStateOf(LauncherRearThreatLevel.Off)
+    var adasBsdRight by mutableStateOf(LauncherRearThreatLevel.Off)
+    /** Lead vehicle distance in metres; 0 = no object. */
+    var adasFrontObjectM by mutableFloatStateOf(0f)
+    /** Per-channel parking distances (cm); absent = sensor silent. */
+    val pdcChannels = androidx.compose.runtime.mutableStateMapOf<LauncherPdcChannel, Float>()
+
+    fun cycleBsdLeft() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasBsdLeft = nextThreatLevel(adasBsdLeft)
+    }
+
+    fun cycleBsdRight() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasBsdRight = nextThreatLevel(adasBsdRight)
+    }
+
+    fun toggleAdasCruise() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasCruiseActive = !adasCruiseActive
+    }
+
+    fun toggleAdasLanes() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasLanesActive = !adasLanesActive
+    }
+
+    fun setAdasFrontObject(metres: Float) {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasFrontObjectM = metres.coerceIn(0f, 120f)
+    }
+
+    /**
+     * Slider semantics: 0 cm = obstacle touching (alarm), 150 cm (default) = free space,
+     * channel silent. Anything in between is a live obstacle distance.
+     * Note: motion preview is intentionally NOT disabled — parking sensors are exactly
+     * what the user wants to see while the drive camera is active.
+     */
+    fun setPdcChannel(channel: LauncherPdcChannel, cm: Float) {
+        simulateEnabled = true
+        val value = cm.coerceIn(0f, 150f)
+        if (value >= 149.5f) pdcChannels.remove(channel) else pdcChannels[channel] = value.coerceAtLeast(1f)
+    }
+
+    fun pdcChannelValue(channel: LauncherPdcChannel): Float = pdcChannels[channel] ?: 150f
+
+    /** Front pair shortcut: the two diagonal corner sensors. */
+    fun setPdcFrontGroup(cm: Float) {
+        fun scaled(f: Float) = if (cm >= 149.5f) 150f else (cm * f).coerceIn(1f, 149f)
+        setPdcChannel(LauncherPdcChannel.FrontSideLeft, cm)
+        setPdcChannel(LauncherPdcChannel.FrontSideRight, scaled(0.8f))
+    }
+
+    /** Rear shortcut: 4 bumper sensors with a natural spread. */
+    fun setPdcRearGroup(cm: Float) {
+        fun scaled(f: Float) = if (cm >= 149.5f) 150f else (cm * f).coerceIn(1f, 149f)
+        setPdcChannel(LauncherPdcChannel.RearLeft, cm)
+        setPdcChannel(LauncherPdcChannel.RearMidLeft, scaled(0.85f))
+        setPdcChannel(LauncherPdcChannel.RearMidRight, scaled(0.7f))
+        setPdcChannel(LauncherPdcChannel.RearRight, scaled(0.55f))
+    }
+
+    fun pdcFrontGroupValue(): Float = pdcChannels[LauncherPdcChannel.FrontSideLeft] ?: 150f
+
+    fun pdcRearGroupValue(): Float = pdcChannels[LauncherPdcChannel.RearLeft] ?: 150f
+
+    private fun nextThreatLevel(level: LauncherRearThreatLevel): LauncherRearThreatLevel = when (level) {
+        LauncherRearThreatLevel.Off -> LauncherRearThreatLevel.Caution
+        LauncherRearThreatLevel.Caution -> LauncherRearThreatLevel.Alert
+        LauncherRearThreatLevel.Alert -> LauncherRearThreatLevel.Off
+    }
+
+    /** Simulated ADAS state, or null when no ADAS sim values are set (live data shows). */
+    fun adasStateOrNull(): LauncherAdasState? {
+        if (!simulateEnabled) return null
+        val frontM = adasFrontObjectM.roundToInt()
+        val anySet = adasCruiseActive || adasLanesActive ||
+            adasBsdLeft != LauncherRearThreatLevel.Off ||
+            adasBsdRight != LauncherRearThreatLevel.Off ||
+            frontM > 0 || pdcChannels.isNotEmpty()
+        if (!anySet) return null
+
+        val threats = LauncherRearThreats(
+            bsdLeft = adasBsdLeft,
+            bsdRight = adasBsdRight,
+        )
+        fun pdcCm(channel: LauncherPdcChannel): Int =
+            (pdcChannels[channel] ?: 0f).roundToInt()
+        val pdc = LauncherPdcZones(
+            frontSideLeftCm = pdcCm(LauncherPdcChannel.FrontSideLeft),
+            frontLeftCm = pdcCm(LauncherPdcChannel.FrontLeft),
+            frontMidLeftCm = pdcCm(LauncherPdcChannel.FrontMidLeft),
+            frontMidRightCm = pdcCm(LauncherPdcChannel.FrontMidRight),
+            frontRightCm = pdcCm(LauncherPdcChannel.FrontRight),
+            frontSideRightCm = pdcCm(LauncherPdcChannel.FrontSideRight),
+            rearSideLeftCm = pdcCm(LauncherPdcChannel.RearSideLeft),
+            rearLeftCm = pdcCm(LauncherPdcChannel.RearLeft),
+            rearMidLeftCm = pdcCm(LauncherPdcChannel.RearMidLeft),
+            rearMidRightCm = pdcCm(LauncherPdcChannel.RearMidRight),
+            rearRightCm = pdcCm(LauncherPdcChannel.RearRight),
+            rearSideRightCm = pdcCm(LauncherPdcChannel.RearSideRight),
+        )
+        val lanes = if (adasLanesActive || adasCruiseActive) {
+            LauncherAdasLaneVisualization.Tracking
+        } else {
+            LauncherAdasLaneVisualization.Hidden
+        }
+        val setSpeed = if (adasCruiseActive) {
+            speedKmh.roundToInt().takeIf { it > 0 } ?: 90
+        } else {
+            null
+        }
+        return LauncherAdasState(
+            accMode = if (adasCruiseActive) LauncherAdasAccMode.ActiveBlue else LauncherAdasAccMode.Off,
+            accSetSpeedKmh = setSpeed,
+            accActive = adasCruiseActive,
+            timeGapLevel = if (adasCruiseActive) 1 else null,
+            frontObject = LauncherAdasFrontObject(
+                valid = frontM > 0,
+                type = if (frontM > 0) LauncherAdasFrontObjectType.Car else LauncherAdasFrontObjectType.None,
+                objectDxM = frontM.takeIf { it > 0 },
+                targetDxM = frontM.takeIf { it > 0 },
+            ),
+            leftLane = lanes,
+            rightLane = lanes,
+            rearThreats = threats,
+            pdc = pdc,
+            srrSystem = if (threats.hasAny) LauncherSrrSystemState.Active else LauncherSrrSystemState.Hidden,
+            hasAnyAlert = threats.hasAny,
+            hasAnyAssist = adasCruiseActive || adasLanesActive || frontM > 0 || pdc.hasAny,
+        )
+    }
 
     fun bodyState(): VehicleBodyState = VehicleBodyState(
         doorFlOpen = doorFlOpen,
@@ -165,6 +307,12 @@ object LauncherDevVehicleState {
         tirePressureOverride = emptyMap()
         batteryVoltageOverride = null
         gearSlotOverride = null
+        adasCruiseActive = false
+        adasLanesActive = false
+        adasBsdLeft = LauncherRearThreatLevel.Off
+        adasBsdRight = LauncherRearThreatLevel.Off
+        adasFrontObjectM = 0f
+        pdcChannels.clear()
         LauncherVehicleAlertsRepository.refresh()
     }
 }

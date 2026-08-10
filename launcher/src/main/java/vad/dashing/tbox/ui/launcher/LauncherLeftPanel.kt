@@ -68,10 +68,13 @@ fun LauncherLeftPanel(
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
     val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle()
-    val fuelPct by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
+    val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
+    val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
+    // Filtered % считается только в активной поездке; вне поездки показываем сырой процент.
+    val fuelPct = fuelPctFiltered ?: fuelPctRaw
     val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
-    val adas by LauncherAdasRepository.state.collectAsStateWithLifecycle()
+    val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
     val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
     val motion = rememberLauncherVehicleMotion(tboxConnected, canViewModel)
 
@@ -87,6 +90,8 @@ fun LauncherLeftPanel(
     }
     // Simulation overrides (hidden settings tab) take precedence over live TPMS.
     val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: tires
+    // Same for ADAS: cruise/BSD/PDC sim replaces the live mbCAN state.
+    val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
 
     val rigState = LauncherCarRigState(
         doorFlOpen = effectiveBody.doorFlOpen,
@@ -101,6 +106,7 @@ fun LauncherLeftPanel(
     var wheelAnchors by remember {
         mutableStateOf<Map<LauncherWheelCorner, Offset>>(emptyMap())
     }
+    var pdcRings by remember { mutableStateOf<LauncherPdcRingFrame?>(null) }
 
     // Simulation gear override (hidden settings tab) takes precedence over live gearbox.
     val activeGear = LauncherDevVehicleState.gearSlotOverride
@@ -249,6 +255,7 @@ fun LauncherLeftPanel(
                     settingsProgress = settingsProgress,
                     settingsUserYawDeg = settingsUserYawDeg,
                     onWheelAnchorsChanged = { wheelAnchors = it },
+                    onPdcRingsChanged = { pdcRings = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -272,6 +279,12 @@ fun LauncherLeftPanel(
                     )
                     LauncherRearThreatOverlay(
                         threats = adas.rearThreats,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    LauncherPdcOverlay(
+                        pdc = adas.pdc,
+                        rings = pdcRings,
+                        driving = inDriveGear || steerPreview,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

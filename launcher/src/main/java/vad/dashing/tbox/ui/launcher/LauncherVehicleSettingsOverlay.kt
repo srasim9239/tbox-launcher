@@ -217,7 +217,10 @@ internal fun LauncherVehicleSettingsContent(
 ) {
     val context = LocalContext.current
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
-    val fuelPct by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
+    val fuelPctFiltered by canViewModel.fuelLevelPercentageFiltered.collectAsStateWithLifecycle()
+    val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
+    // Filtered % считается только в активной поездке; вне поездки показываем сырой процент.
+    val fuelPct = fuelPctFiltered ?: fuelPctRaw
     val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
     val insideTemp by canViewModel.insideTemperature.collectAsStateWithLifecycle()
     val outsideTemp by canViewModel.outsideTemperature.collectAsStateWithLifecycle()
@@ -688,6 +691,11 @@ internal fun LauncherVehicleSettingsContent(
                     (systemSettings.bluetoothName?.let { " · $it" } ?: ""),
                 active = systemSettings.bluetoothEnabled,
                 onClick = { systemSettings.applyBluetoothEnabled(!systemSettings.bluetoothEnabled) },
+            )
+            LauncherSettingsToggleRow(
+                label = stringResource(R.string.launcher_vs_dark_theme),
+                active = LauncherThemeState.darkTheme,
+                onClick = { LauncherThemeState.setDarkTheme(context, !LauncherThemeState.darkTheme) },
             )
             Row(
                 modifier = Modifier
