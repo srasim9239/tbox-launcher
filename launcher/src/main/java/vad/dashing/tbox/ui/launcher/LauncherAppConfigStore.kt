@@ -2,6 +2,8 @@ package vad.dashing.tbox.ui.launcher
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import vad.dashing.tbox.ui.LaunchableAppEntry
 
 private const val PREFS = "tbox_launcher_app_config"
@@ -10,7 +12,11 @@ private const val KEY_GRID = "grid_packages"
 private const val KEY_DOCK = "dock_packages"
 private const val KEY_CAR_PAINT = "car_paint_id"
 private const val KEY_DEFAULT_MEDIA = "default_media_package"
+private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
+internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
+internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
+internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
 internal const val GRID_SLOT_COUNT = 9
 private const val DOCK_SLOT_COUNT = 4
 
@@ -22,6 +28,9 @@ private val DEFAULT_DOCK = listOf(
 )
 
 internal object LauncherAppConfigStore {
+
+    private val mediaCardAlphaRevision = MutableStateFlow(0)
+    internal val mediaCardAlphaRevisionFlow: StateFlow<Int> = mediaCardAlphaRevision
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -40,6 +49,16 @@ internal object LauncherAppConfigStore {
 
     fun setDefaultMediaPackage(context: Context, packageName: String) {
         prefs(context).edit().putString(KEY_DEFAULT_MEDIA, packageName).apply()
+    }
+
+    fun mediaCardAlpha(context: Context): Float =
+        prefs(context).getFloat(KEY_MEDIA_CARD_ALPHA, MEDIA_CARD_ALPHA_DEFAULT)
+            .coerceIn(MEDIA_CARD_ALPHA_MIN, MEDIA_CARD_ALPHA_MAX)
+
+    fun setMediaCardAlpha(context: Context, alpha: Float) {
+        val next = alpha.coerceIn(MEDIA_CARD_ALPHA_MIN, MEDIA_CARD_ALPHA_MAX)
+        prefs(context).edit().putFloat(KEY_MEDIA_CARD_ALPHA, next).apply()
+        mediaCardAlphaRevision.value++
     }
 
     fun isFullscreenLaunch(context: Context, packageName: String): Boolean =

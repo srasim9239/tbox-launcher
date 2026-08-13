@@ -19,12 +19,15 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -151,6 +155,8 @@ fun LauncherSettingsScreen(
             style = MaterialTheme.typography.tboxBody,
             color = LauncherColors.TextSecondary,
         )
+
+        MediaCardOpacitySlider()
 
         Box(
             modifier = Modifier
@@ -413,6 +419,50 @@ fun LauncherSettingsScreen(
                 titleRes = R.string.launcher_feedback_title,
             )
         }
+    }
+}
+
+@Composable
+private fun MediaCardOpacitySlider() {
+    val context = LocalContext.current
+    var alpha by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.mediaCardAlpha(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_media_card_opacity_title),
+                style = MaterialTheme.typography.tboxBody,
+                color = LauncherColors.TextPrimary,
+            )
+            Text(
+                text = "${(alpha * 100f).roundToInt()}%",
+                style = MaterialTheme.typography.tboxBody,
+                color = LauncherColors.TextSecondary,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_media_card_opacity_desc),
+            style = MaterialTheme.typography.tboxBody,
+            color = LauncherColors.TextMuted,
+        )
+        Slider(
+            value = alpha,
+            onValueChange = { next ->
+                alpha = next
+                LauncherAppConfigStore.setMediaCardAlpha(context, next)
+            },
+            valueRange = MEDIA_CARD_ALPHA_MIN..MEDIA_CARD_ALPHA_MAX,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
     }
 }
 

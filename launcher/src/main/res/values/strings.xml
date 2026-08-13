@@ -192,6 +192,8 @@
     <string name="launcher_motion_preview_on">Превью руля: вкл</string>
     <string name="launcher_motion_preview_off">Превью руля: выкл</string>
     <string name="launcher_media_bind_player">Привязать плеер</string>
+    <string name="launcher_media_card_opacity_title">Непрозрачность плеера</string>
+    <string name="launcher_media_card_opacity_desc">Чем ниже, тем сильнее просвечивает дорога</string>
     <string name="launcher_split_add_preset">Добавить пресет</string>
     <string name="launcher_split_new_preset">Новый пресет</string>
     <string name="launcher_split_edit_preset">Пресет сплита</string>

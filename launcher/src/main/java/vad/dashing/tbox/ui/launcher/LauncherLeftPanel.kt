@@ -125,7 +125,7 @@ fun LauncherLeftPanel(
         else -> LauncherColors.LeftTextPrimary
     }
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxHeight()
             .onGloballyPositioned { coordinates ->
@@ -138,11 +138,25 @@ fun LauncherLeftPanel(
                 )
                 onCarBoundsChanged(rect)
             }
-            .background(LauncherColors.LeftPanelBg)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
+            .background(LauncherColors.LeftPanelBg),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (roadVisible) {
+            LauncherVirtualRoad(
+                speedKmh = effectiveSpeed,
+                steerAngleDeg = effectiveSteer,
+                adas = adas,
+                steerPreview = steerPreview,
+                inDriveGear = inDriveGear,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -229,16 +243,6 @@ fun LauncherLeftPanel(
                 .padding(vertical = 8.dp),
             contentAlignment = Alignment.Center,
         ) {
-            if (roadVisible) {
-                LauncherVirtualRoad(
-                    speedKmh = effectiveSpeed,
-                    steerAngleDeg = effectiveSteer,
-                    adas = adas,
-                    steerPreview = steerPreview,
-                    inDriveGear = inDriveGear,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
             if (!carHidden) {
                 val settingsProgress = settingsTransitionProgress.coerceIn(0f, 1f)
                 LauncherCar3DModel(
@@ -315,5 +319,6 @@ fun LauncherLeftPanel(
         }
 
         LauncherMediaMiniPlayer()
+        }
     }
 }

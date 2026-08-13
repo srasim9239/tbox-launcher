@@ -53,8 +53,6 @@ import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private const val LAUNCHER_MEDIA_SOURCE_ID = "launcher_mini_player"
-/** Slightly see-through card so the left-panel road/model shows through. */
-private const val MEDIA_CARD_ALPHA = 0.72f
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -67,6 +65,11 @@ fun LauncherMediaMiniPlayer(
     var pickerFallback by remember { mutableStateOf(false) }
     var permissionTick by remember { mutableIntStateOf(0) }
     val playerStates by SharedMediaControlService.playerStates.collectAsStateWithLifecycle()
+    val mediaAlphaRevision by LauncherAppConfigStore.mediaCardAlphaRevisionFlow
+        .collectAsStateWithLifecycle()
+    val mediaCardAlpha = remember(context, mediaAlphaRevision) {
+        LauncherAppConfigStore.mediaCardAlpha(context)
+    }
 
     // The grant may change while HOME stays resumed (settings open as freeform), so
     // lifecycle-resume checks are not enough — observe the Secure setting directly.
@@ -163,7 +166,7 @@ fun LauncherMediaMiniPlayer(
         }.getOrNull() ?: LauncherColors.LeftPanelCard
     }
     val mediaCardColor by animateColorAsState(
-        targetValue = mediaCardTarget.copy(alpha = MEDIA_CARD_ALPHA),
+        targetValue = mediaCardTarget.copy(alpha = mediaCardAlpha),
         label = "mediaCardTint",
     )
 
