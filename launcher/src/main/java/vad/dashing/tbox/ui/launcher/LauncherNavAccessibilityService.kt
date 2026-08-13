@@ -7,6 +7,9 @@ import android.view.accessibility.AccessibilityNodeInfo
 /**
  * Optional foreground scrape of Yandex Navi UI nodes (YNarrows NodeInfoForNavi).
  * Enable in system Accessibility settings when richer hints are needed.
+ *
+ * Freeform Back is handled in [goLauncherBack] (dock) — do not filter KEYCODE_BACK here:
+ * consuming it broke overlay close and in-app navigation on single-activity apps.
  */
 class LauncherNavAccessibilityService : AccessibilityService() {
 

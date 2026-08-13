@@ -24,6 +24,7 @@ import vad.dashing.tbox.ui.launcher.LauncherThemeState
 import vad.dashing.tbox.ui.launcher.launchAutostartShortcut
 import vad.dashing.tbox.ui.launcher.TeslaLauncherScreen
 import vad.dashing.tbox.ui.launcher.dismissForeignFreeformTasks
+import vad.dashing.tbox.ui.launcher.LauncherAccessibilityHelper
 import vad.dashing.tbox.ui.launcher.ensureFreeformImmersivePolicy
 import vad.dashing.tbox.ui.launcher.goLauncherHome
 import androidx.compose.runtime.DisposableEffect
@@ -49,6 +50,9 @@ class LauncherHomeActivity : ComponentActivity() {
         // even with MANAGE_ACTIVITY_STACKS+ACTIVITY_EMBEDDING granted. Needs INJECT_EVENTS (signature).
         applyLauncherWindowFlags()
         ensureFreeformImmersivePolicy(this)
+        // Dock Back = accessibility GLOBAL_ACTION_BACK (no INJECT_EVENTS on user builds).
+        val a11y = LauncherAccessibilityHelper.ensureNavBackServiceEnabled(this)
+        Log.w(TAG, "nav-back a11y enabled=$a11y connected=${vad.dashing.tbox.ui.launcher.LauncherNavAccessibilityService.isConnected()}")
         LauncherAppListVersion.ensurePackageChangeReceiver(applicationContext)
         // After reinstall / process death OEM freeform stacks often survive alone on top.
         // Delay slightly so WM finishes enumerating stacks post-install.

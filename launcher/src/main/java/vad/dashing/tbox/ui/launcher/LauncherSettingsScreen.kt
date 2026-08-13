@@ -411,7 +411,6 @@ fun LauncherSettingsScreen(
                 entries = remember { DonationLinks.feedbackEntries },
                 modifier = Modifier.weight(1f),
                 titleRes = R.string.launcher_feedback_title,
-                subtitleRes = R.string.launcher_feedback_subtitle,
             )
         }
     }

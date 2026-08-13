@@ -9,9 +9,7 @@ import android.os.Process
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.graphics.drawable.toBitmap
 import vad.dashing.tbox.LauncherAppIconPaths
 import vad.dashing.tbox.LauncherHomeActivity
 import vad.dashing.tbox.MainActivity
@@ -90,9 +88,7 @@ private fun loadLaunchableAppEntries(
             val activity = info.componentName.className
             val label = info.label?.toString().orEmpty().ifBlank { pkg }
             val bitmap = decodeLauncherAppCustomIconIfPresent(appContext, pkg, iconSizePx, lookup)
-                ?: runCatching {
-                    info.getBadgedIcon(iconSizePx).toBitmap(iconSizePx, iconSizePx).asImageBitmap()
-                }.getOrNull()
+                ?: LauncherAppIconLoader.fromLauncherActivity(appContext, info, iconSizePx)
             LaunchableAppEntry(packageName = pkg, label = label, icon = bitmap, activityName = activity)
         }
     val base = if (fromLauncherService.isNotEmpty()) {
@@ -108,9 +104,7 @@ private fun loadLaunchableAppEntries(
                 val activity = ri.activityInfo.name
                 val label = ri.loadLabel(pm).toString()
                 val bitmap = decodeLauncherAppCustomIconIfPresent(appContext, pkg, iconSizePx, lookup)
-                    ?: runCatching {
-                        ri.loadIcon(pm).toBitmap(iconSizePx, iconSizePx).asImageBitmap()
-                    }.getOrNull()
+                    ?: LauncherAppIconLoader.fromResolveInfo(appContext, ri, iconSizePx)
                 LaunchableAppEntry(packageName = pkg, label = label, icon = bitmap, activityName = activity)
             },
         )
@@ -146,10 +140,7 @@ private fun ensureOwnMonitorEntry(
         }.sortedBy { it.label.lowercase() }
     }
     val icon = decodeLauncherAppCustomIconIfPresent(appContext, pkg, iconSizePx, lookup)
-        ?: runCatching {
-            appContext.packageManager.getApplicationIcon(pkg)
-                .toBitmap(iconSizePx, iconSizePx).asImageBitmap()
-        }.getOrNull()
+        ?: LauncherAppIconLoader.fromPackage(appContext, pkg, iconSizePx)
     return (withoutHome + LaunchableAppEntry(
         packageName = pkg,
         label = monitorLabel,
@@ -190,8 +181,10 @@ internal fun rememberLaunchableAppEntries(
     LauncherAppListVersion.ensurePackageChangeReceiver(appContext)
     val appListRevision = LauncherAppListVersion.version
     val iconLookup = rememberLauncherAppIconLookup(settingsViewModel)
+    // Match the largest on-screen use (drawer ~56dp) with headroom for sharp scaling.
+    // Previous ceiling of 96px forced upscale and looked soft on HU density.
     val iconSizePx = remember(appContext) {
-        (48f * appContext.resources.displayMetrics.density).toInt().coerceIn(32, 96)
+        (64f * appContext.resources.displayMetrics.density).toInt().coerceIn(96, 256)
     }
     return remember(appContext, iconSizePx, launcherIconRevision, appListRevision, iconLookup) {
         LaunchableAppsWithIconsCache.getOrLoad(iconSizePx, launcherIconRevision, appListRevision, iconLookup) {

@@ -3,8 +3,8 @@
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
     android:description="@string/launcher_nav_accessibility_desc"
     android:notificationTimeout="100"
-    android:packageNames="ru.yandex.yandexnavi"
     android:settingsActivity="vad.dashing.tbox.MainActivity" />

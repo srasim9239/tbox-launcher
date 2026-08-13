@@ -21,19 +21,28 @@ private const val RESIZE_MODE_SYSTEM = 0
 /** Packages we launched into freeform — used when stack windowingMode field is unreliable. */
 internal object FreeformLaunchRegistry {
     private val packages = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val lastBounds = java.util.concurrent.ConcurrentHashMap<String, Rect>()
 
-    fun record(packageName: String) {
-        if (packageName.isNotBlank()) packages += packageName
+    fun record(packageName: String, bounds: Rect? = null) {
+        if (packageName.isBlank()) return
+        packages += packageName
+        if (bounds != null && !bounds.isEmpty) {
+            lastBounds[packageName] = Rect(bounds)
+        }
     }
 
     fun snapshot(): Set<String> = packages.toSet()
 
+    fun lastBounds(packageName: String): Rect? = lastBounds[packageName]?.let { Rect(it) }
+
     fun remove(packageName: String) {
         packages -= packageName
+        lastBounds -= packageName
     }
 
     fun clear() {
         packages.clear()
+        lastBounds.clear()
     }
 }
 
@@ -135,7 +144,7 @@ internal fun tryLaunchIntentInBounds(
     }.onSuccess {
         LastAppTracker.recordLaunch(context, packageName)
         Log.w("LauncherAppLaunch", "freeform startActivity OK pkg=$packageName bounds=$targetBounds")
-        FreeformLaunchRegistry.record(packageName)
+        FreeformLaunchRegistry.record(packageName, targetBounds)
         // OEM often shows a default freeform rect; force the visible stack to our bounds.
         val apply = { forceFreeformBounds(appCtx, packageName, targetBounds) }
         apply()

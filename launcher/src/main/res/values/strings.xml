@@ -1,10 +1,10 @@
 <resources>
-    <string name="app_name">TBox Home</string>
-    <string name="launcher_standalone_app_name">TBox Launcher</string>
+    <string name="app_name">Dashing Club Launcher</string>
+    <string name="launcher_standalone_app_name">Dashing Club Launcher</string>
     <string name="launcher_standalone_about_title">О лаунчере</string>
-    <string name="launcher_standalone_about_body">TBox Launcher %1$s\nОтдельный HOME без Monitor / trips / fuel.\nOTA test build.</string>
+    <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME-лаунчер для Jetour Dashing.\nOTA.</string>
     <string name="launcher_standalone_service_running">Сервис лаунчера</string>
-    <string name="launcher_update_install_permission_hint">Для установки APK разрешите установку приложений из неизвестных источников для TBox Launcher в настройках Android.</string>
+    <string name="launcher_update_install_permission_hint">Для установки APK разрешите установку приложений из неизвестных источников для Dashing Club Launcher в настройках Android.</string>
     <string name="app_name_monitor">TBox Monitor</string>
     <string name="keyboard_accessibility_description">Track keyboard visibility for floating panels</string>
 
@@ -109,8 +109,8 @@
     <string name="launcher_footer_apps">Приложения</string>
     <string name="launcher_donate_title">Поддержать проект</string>
     <string name="launcher_donate_subtitle">Если лаунчер оказался полезен — поддержите разработку любым удобным способом. Наведите камеру телефона на QR-код.</string>
-    <string name="launcher_feedback_title">Обратная связь</string>
-    <string name="launcher_feedback_subtitle">Бот примет рекомендации и сообщения о проблемах. Наведите камеру телефона на QR-код.</string>
+    <string name="launcher_feedback_title">Обратная связь / Инструкции</string>
+    <string name="launcher_feedback_subtitle">Telegram-бот: сообщения о проблемах и инструкция по настройке (ADB AppControl / Bugjaeger). Наведите камеру на QR-код.</string>
     <string name="launcher_donate_copy">Копировать ссылку</string>
     <string name="launcher_donate_open">Открыть</string>
     <string name="launcher_donate_copied">Ссылка скопирована</string>
@@ -163,7 +163,7 @@
     <string name="launcher_nav_grant_accessibility">Спец. возможности (foreground)</string>
     <string name="launcher_nav_notifications_ok">Уведомления: разрешено</string>
     <string name="launcher_nav_accessibility_ok">Спец. возможности: вкл.</string>
-    <string name="launcher_nav_accessibility_label">TBox: подсказки навигатора</string>
+    <string name="launcher_nav_accessibility_label">Dashing Club: подсказки навигатора</string>
     <string name="launcher_nav_accessibility_desc">Читает манёвры Яндекс Навигатора на экране для отображения в лаунчере TBox. Данные не передаются наружу.</string>
     <string name="launcher_nav_alert_camera">Камера</string>
     <string name="launcher_nav_alert_accident">ДТП</string>

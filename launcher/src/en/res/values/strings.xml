@@ -1,5 +1,9 @@
 <resources>
-    <string name="app_name">TBox Home</string>
+    <string name="app_name">Dashing Club Launcher</string>
+    <string name="launcher_standalone_app_name">Dashing Club Launcher</string>
+    <string name="launcher_standalone_about_title">About</string>
+    <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME launcher for Jetour Dashing.\nOTA.</string>
+    <string name="launcher_update_install_permission_hint">To install the APK, allow installs from unknown sources for Dashing Club Launcher in Android settings.</string>
     <string name="app_name_monitor">TBox Monitor</string>
     <string name="keyboard_accessibility_description">Track keyboard visibility for floating panels</string>
 
@@ -12,6 +16,8 @@
     <string name="action_configure">Configure</string>
     <string name="launcher_donate_title">Support the project</string>
     <string name="launcher_donate_subtitle">If the launcher is useful, you can support development in any convenient way. Point your phone camera at the QR code.</string>
+    <string name="launcher_feedback_title">Feedback / Setup guide</string>
+    <string name="launcher_feedback_subtitle">Telegram bot: bug reports and ADB setup instructions (ADB AppControl / Bugjaeger). Point your phone camera at the QR code.</string>
     <string name="launcher_donate_copy">Copy link</string>
     <string name="launcher_donate_open">Open</string>
     <string name="launcher_donate_copied">Link copied</string>
@@ -30,7 +36,7 @@
     <string name="launcher_nav_grant_accessibility">Accessibility (foreground)</string>
     <string name="launcher_nav_notifications_ok">Notifications: allowed</string>
     <string name="launcher_nav_accessibility_ok">Accessibility: on</string>
-    <string name="launcher_nav_accessibility_label">TBox: navigator hints</string>
+    <string name="launcher_nav_accessibility_label">Dashing Club: navigator hints</string>
     <string name="launcher_nav_accessibility_desc">Reads Yandex Navi on-screen maneuvers for the TBox launcher. Data stays on device.</string>
     <string name="launcher_nav_alert_camera">Camera</string>
     <string name="launcher_nav_alert_accident">Accident</string>

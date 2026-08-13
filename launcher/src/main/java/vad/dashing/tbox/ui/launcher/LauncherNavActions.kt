@@ -2,23 +2,26 @@ package vad.dashing.tbox.ui.launcher
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
 import android.hardware.input.InputManager
-import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
+import java.util.concurrent.atomic.AtomicBoolean
 import vad.dashing.tbox.LauncherForegroundHandoff
 import vad.dashing.tbox.LauncherHomeActivityHolder
 import vad.dashing.tbox.LauncherVehicleSettingsActivity
 
 private const val TAG = "LauncherNav"
-private const val INJECT_ASYNC = 0
 private const val HOME_DEBOUNCE_MS = 400L
 
 @Volatile
 private var lastHomeAtMs = 0L
+
+/** Prevents Compose BackHandler ↔ inject KEYCODE_BACK recursion on the launcher. */
+private val backDispatchInProgress = AtomicBoolean(false)
 
 /**
  * Home: close overlays, dismiss freeform windows, bring launcher to front.
@@ -62,19 +65,25 @@ internal fun goLauncherHome(
 
     runCatching {
         context.startActivity(
-            android.content.Intent(android.content.Intent.ACTION_MAIN).apply {
-                addCategory(android.content.Intent.CATEGORY_HOME)
-                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                    android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
             },
         )
     }
 }
 
 /**
- * Back: close launcher overlays first; otherwise deliver KEYCODE_BACK like the
- * physical button (after focusing the foreign freeform/fullscreen app).
+ * Back: close launcher overlays first; else send KEYCODE_BACK into freeform
+ * only when the task has a deeper stack (numActivities > 1).
+ *
+ * On the app root — do nothing (keep the freeform window). Never relaunch.
+ * Closing freeform is Home only.
+ *
+ * Back Button Pro does the same delivery via AccessibilityService.performGlobalAction
+ * (GLOBAL_ACTION_BACK); we mirror that, with InputManager inject as fallback.
  */
 internal fun goLauncherBack(
     context: Context,
@@ -83,142 +92,128 @@ internal fun goLauncherBack(
     onCloseVehicleSettings: () -> Unit,
     onCloseAppDrawer: () -> Unit,
 ) {
+    if (backDispatchInProgress.get()) {
+        Log.w(TAG, "goLauncherBack: skip re-entrant (inject/BackHandler loop)")
+        return
+    }
+
     when {
         vehicleSettingsOpen ||
             LauncherVehicleSettingsUiState.open ||
+            LauncherVehicleSettingsOverlayWindow.isShowing() ||
             LauncherVehicleSettingsActivity.isOpen() -> {
             onCloseVehicleSettings()
             closeVehicleSettingsOverlay()
             return
         }
-        appDrawerOpen -> {
+        appDrawerOpen || LauncherAppDrawerWindow.isShowing() -> {
             onCloseAppDrawer()
+            LauncherAppDrawerWindow.hide()
+            return
+        }
+        LauncherAboutOverlayWindow.isShowing() -> {
+            LauncherAboutOverlayWindow.hide()
+            return
+        }
+        LauncherAppPickerOverlayWindow.isShowing() -> {
+            LauncherAppPickerOverlayWindow.hide()
             return
         }
     }
 
     val foreign = findForeignAppTask(context)
     if (foreign == null) {
-        Log.w(TAG, "goLauncherBack: no foreign app — ignore (do not close launcher)")
+        Log.w(TAG, "goLauncherBack: no foreign app — ignore")
         return
     }
 
-    // Guard against killing the freeform app with an extra BACK:
-    // BACK must stop at the app's main page, never finish its root activity.
-    if (isForeignTaskAtAppRoot(context, foreign)) {
-        Log.w(TAG, "goLauncherBack: skip root BACK task=${foreign.taskId} pkg=${foreign.packageName}")
+    // Keep freeform on screen, but never Back-finish the root activity.
+    moveTaskToFrontId(context, foreign.taskId)
+
+    if (isTaskAtRoot(context, foreign)) {
+        Log.w(
+            TAG,
+            "goLauncherBack: at root task=${foreign.taskId} pkg=${foreign.packageName} — keep (no Back)",
+        )
         return
     }
 
-    // Focus freeform quietly (setFocusedTask), then BACK — avoid moveTaskToFront flash.
-    Log.w(TAG, "goLauncherBack: focus+BACK task=${foreign.taskId} pkg=${foreign.packageName}")
-    focusTaskQuietly(foreign.taskId)
-    dispatchPhysicalBackDelayed()
+    Log.w(TAG, "goLauncherBack: BACK task=${foreign.taskId} pkg=${foreign.packageName}")
+    dispatchPhysicalBackDelayed(context, foreign)
 }
 
 /**
- * True when the foreign task is at (or near) its root activity, where BACK would close
- * the app. Exact activity counts are unavailable under the app uid on this Android 9 HU
- * (getRunningTasks needs the signature-only REAL_GET_TASKS, dumpsys needs DUMP), so the
- * fallback heuristic compares the task's top activity with the app's launcher component.
+ * Focus freeform, then deliver Back. No relaunch if the app finishes itself.
  */
-private fun isForeignTaskAtAppRoot(context: Context, foreign: ForeignAppTask): Boolean {
-    val depth = taskActivityCount(context, foreign.taskId)
-    if (depth >= 0) return depth <= 1
+private fun dispatchPhysicalBackDelayed(context: Context, foreign: ForeignAppTask) {
+    val appCtx = context.applicationContext
+    if (!backDispatchInProgress.compareAndSet(false, true)) {
+        Log.w(TAG, "dispatchPhysicalBack: already in progress")
+        return
+    }
+    moveTaskToFrontId(context, foreign.taskId)
+    Thread({
+        try {
+            runCatching { Thread.sleep(180L) }
+            // Re-check: stack may already be at root after focus settle.
+            if (isTaskAtRoot(appCtx, foreign)) {
+                Log.w(TAG, "BACK skip after settle: at root pkg=${foreign.packageName}")
+                return@Thread
+            }
+            moveTaskToFrontId(appCtx, foreign.taskId)
+            runCatching { Thread.sleep(60L) }
+            dispatchPhysicalBack()
+        } finally {
+            backDispatchInProgress.set(false)
+        }
+    }, "launcher-back").apply { isDaemon = true }.start()
+}
 
-    val top = foreign.topActivityClass
-    if (top == null) {
-        Log.w(TAG, "isAtRoot: top activity unknown task=${foreign.taskId} — treat as root")
-        return true
-    }
-    val launchClass = runCatching {
-        context.packageManager.getLaunchIntentForPackage(foreign.packageName)
-            ?.component?.className
+/** True when Back would finish the task (single activity / top == base). */
+internal fun isTaskAtRoot(context: Context, foreign: ForeignAppTask): Boolean {
+    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return true
+    @Suppress("DEPRECATION")
+    val task = runCatching {
+        am.getRunningTasks(64)?.firstOrNull { it.id == foreign.taskId }
     }.getOrNull()
-    if (launchClass == null) {
-        Log.w(TAG, "isAtRoot: no launch component for ${foreign.packageName} — treat as root")
-        return true
+    if (task != null) {
+        val num = task.numActivities
+        val top = task.topActivity
+        val base = task.baseActivity
+        val atRoot = num <= 1 || (top != null && base != null && top == base)
+        Log.w(TAG, "isTaskAtRoot task=${foreign.taskId} num=$num top=$top base=$base -> $atRoot")
+        return atRoot
     }
-    val normalizedTop =
-        if (top.startsWith(".")) foreign.packageName + top else top
-    val atRoot = normalizedTop == launchClass
-    Log.w(TAG, "isAtRoot: task=${foreign.taskId} top=$normalizedTop launch=$launchClass atRoot=$atRoot")
+    val launch = context.packageManager.getLaunchIntentForPackage(foreign.packageName)
+    val launchCls = launch?.component?.className
+    val topCls = foreign.topActivityClass
+    val atRoot = launchCls != null && topCls != null &&
+        (launchCls == topCls || launchCls.endsWith(topCls) || topCls.endsWith(launchCls))
+    Log.w(TAG, "isTaskAtRoot fallback pkg=${foreign.packageName} launch=$launchCls top=$topCls -> $atRoot")
     return atRoot
 }
 
 /**
- * Number of activities in [taskId]. Android 10+: `IActivityTaskManager.getTasks` (works
- * under the app uid thanks to the MANAGE_ACTIVITY_STACKS grant). Android 9 (the HU):
- * `ActivityManager.getRunningTasks`, which returns foreign tasks only when REAL_GET_TASKS
- * (protectionLevel development) is granted via `pm grant`. Returns -1 when unknown.
+ * Same path as Back Button Pro: accessibility GLOBAL_ACTION_BACK when the service
+ * is connected; otherwise InputManager inject (scrcpy/HW-style flags).
  */
-private fun taskActivityCount(context: Context, taskId: Int): Int {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        taskCountViaActivityTaskManager(taskId)
-    } else {
-        taskCountViaRunningTasks(context, taskId)
-    }
-}
-
-private fun taskCountViaActivityTaskManager(taskId: Int): Int {
-    val count = runCatching {
-        val atmClass = Class.forName("android.app.ActivityTaskManager")
-        val service = atmClass.getDeclaredMethod("getService").invoke(null)
-        @Suppress("UNCHECKED_CAST")
-        val tasks = service.javaClass
-            .getMethod("getTasks", Int::class.javaPrimitiveType)
-            .invoke(service, 200) as List<ActivityManager.RunningTaskInfo>
-        tasks.firstOrNull { it.taskId == taskId }?.numActivities
-    }.onFailure {
-        Log.w(TAG, "taskActivityCount: getTasks failed for task=$taskId", it)
-    }.getOrNull()
-    return count ?: -1
-}
-
-@Suppress("DEPRECATION")
-private fun taskCountViaRunningTasks(context: Context, taskId: Int): Int {
-    val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return -1
-    val count = runCatching {
-        am.getRunningTasks(100)
-            ?.firstOrNull { it.id == taskId }
-            ?.numActivities
-    }.onFailure {
-        Log.w(TAG, "taskActivityCount: getRunningTasks failed for task=$taskId", it)
-    }.getOrNull()
-    return count ?: -1
-}
-
-/**
- * Give WM a beat to settle window focus after setFocusedTask, then dispatch Back off the
- * main thread (the fallback paths may block briefly).
- */
-private fun dispatchPhysicalBackDelayed() {
-    Thread({
-        runCatching { Thread.sleep(220L) }
-        dispatchPhysicalBack()
-    }, "launcher-back").apply { isDaemon = true }.start()
-}
-
-/** Sends exactly the same global key event as the hardware Back button. */
 internal fun dispatchPhysicalBack() {
-    // Preferred path: accessibility global action — needs no INJECT_EVENTS and reaches the
-    // focused foreign window. The service must be enabled in system accessibility settings.
+    if (!LauncherNavAccessibilityService.isConnected()) {
+        LauncherHomeActivityHolder.instance?.let {
+            LauncherAccessibilityHelper.ensureNavBackServiceEnabled(it)
+        }
+    }
     if (LauncherNavAccessibilityService.dispatchGlobalBack()) {
-        Log.w(TAG, "BACK dispatched via accessibility global action")
+        Log.w(TAG, "BACK via accessibility global action")
         return
     }
-    if (injectKeyEvent(KeyEvent.KEYCODE_BACK)) return
-    runCatching {
-        ProcessBuilder("input", "keyevent", KeyEvent.KEYCODE_BACK.toString())
-            .redirectErrorStream(true)
-            .start()
-            .waitFor()
-    }.onFailure {
-        Log.w(TAG, "input keyevent BACK failed", it)
+    if (injectKeyEvent(KeyEvent.KEYCODE_BACK)) {
+        Log.w(TAG, "BACK via InputManager inject")
+        return
     }
+    Log.e(TAG, "BACK FAILED: could not deliver KEYCODE_BACK")
 }
 
-/** Inject a key via InputManager (system nav-bar style). */
 internal fun injectKeyEvent(keyCode: Int): Boolean {
     return runCatching {
         val imClass = InputManager::class.java
@@ -229,61 +224,45 @@ internal fun injectKeyEvent(keyCode: Int): Boolean {
             Int::class.javaPrimitiveType,
         )
         val now = SystemClock.uptimeMillis()
+        val flags = KeyEvent.FLAG_FROM_SYSTEM or KeyEvent.FLAG_VIRTUAL_HARD_KEY
         val down = KeyEvent(
             now, now, KeyEvent.ACTION_DOWN, keyCode, 0, 0,
-            KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD,
+            KeyCharacterMap.VIRTUAL_KEYBOARD, 0, flags, InputDevice.SOURCE_KEYBOARD,
         )
         val up = KeyEvent(
             now + 10, now + 10, KeyEvent.ACTION_UP, keyCode, 0, 0,
-            KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, InputDevice.SOURCE_KEYBOARD,
+            KeyCharacterMap.VIRTUAL_KEYBOARD, 0, flags, InputDevice.SOURCE_KEYBOARD,
         )
-        inject.invoke(im, down, INJECT_ASYNC)
-        inject.invoke(im, up, INJECT_ASYNC)
-        Log.w(TAG, "injectKeyEvent keyCode=$keyCode OK")
-        true
+        val modeAsync = 0
+        val downOk = inject.invoke(im, down, modeAsync) as? Boolean ?: false
+        val upOk = inject.invoke(im, up, modeAsync) as? Boolean ?: false
+        Log.w(TAG, "injectKeyEvent keyCode=$keyCode down=$downOk up=$upOk")
+        downOk && upOk
     }.onFailure {
         Log.w(TAG, "injectKeyEvent keyCode=$keyCode failed", it)
     }.getOrDefault(false)
 }
 
-/** Prefer setFocusedTask (no z-order jump) over moveTaskToFront. */
-private fun focusTaskQuietly(taskId: Int): Boolean {
-    val ok = runCatching {
-        val atmClass = Class.forName("android.app.ActivityTaskManager")
-        val service = atmClass.getDeclaredMethod("getService").invoke(null)
-        service.javaClass.getMethod("setFocusedTask", Int::class.javaPrimitiveType)
-            .invoke(service, taskId)
-        true
-    }.recoverCatching {
-        val amClass = Class.forName("android.app.ActivityManager")
-        val getService = amClass.getDeclaredMethod("getService")
-        getService.isAccessible = true
-        val service = getService.invoke(null)
-        service.javaClass.getMethod("setFocusedTask", Int::class.javaPrimitiveType)
-            .invoke(service, taskId)
-        true
-    }.onFailure {
-        Log.w(TAG, "focusTaskQuietly failed task=$taskId", it)
-    }.getOrDefault(false)
-    if (ok) Log.w(TAG, "focusTaskQuietly OK task=$taskId")
-    return ok
-}
-
-private data class ForeignAppTask(
+internal data class ForeignAppTask(
     val taskId: Int,
     val packageName: String,
     val topActivityClass: String?,
 )
 
-private fun findForeignAppTask(context: Context): ForeignAppTask? {
+internal fun findForeignAppTask(context: Context): ForeignAppTask? {
     val launcher = context.packageName
     val stacks = LauncherAmStackShell.listStacks()
-    val freeform = stacks.firstOrNull { row ->
+    val freeforms = stacks.filter { row ->
         row.windowingMode.equals("freeform", ignoreCase = true) &&
             row.packageName != null &&
             row.packageName != launcher &&
             row.taskId != null
     }
+    // Prefer visible freeform; else highest stack id (last brought forward).
+    // ActivityTaskManager.getFocusedStackInfo is unavailable on API 28 / blocked for
+    // targetSdk 36 lintVital — do not use reflective ATM here.
+    val freeform = freeforms.firstOrNull { it.visible }
+        ?: freeforms.maxByOrNull { it.stackId }
     if (freeform?.taskId != null && freeform.packageName != null) {
         return ForeignAppTask(freeform.taskId, freeform.packageName, freeform.topActivityClass)
     }

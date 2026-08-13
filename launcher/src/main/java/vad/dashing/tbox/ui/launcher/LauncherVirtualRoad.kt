@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -81,46 +82,68 @@ private fun DrawScope.drawVirtualRoad(
     val horizonY = h * 0.24f
     // Keep road straight — car body no longer yaws with steering in drive mode.
     val vanishX = w / 2f
+    // The road deliberately overflows the panel at the bottom: neighbouring lanes run
+    // off both edges, which is what keeps the ego car from looking oversized.
     fun halfWidthAt(t: Float): Float =
-        (w * 0.075f) * (1f - t).pow(1.25f) + (w * 0.42f) * t.pow(1.05f)
-    fun laneOffsetAt(t: Float): Float = halfWidthAt(t) * 0.34f
+        (w * 0.14f) * (1f - t).pow(1.25f) + (w * 1.10f) * t.pow(1.05f)
+    // Ego (center) lane half-width — ACC beam and LKA sit on this strip, not the
+    // outer road shoulders.
+    fun laneOffsetAt(t: Float): Float = halfWidthAt(t) * 0.30f
     fun yAt(t: Float): Float = horizonY + (h - horizonY) * t
     fun centerXAt(t: Float): Float = vanishX
+
+    drawRoadSurface(
+        horizonY = horizonY,
+        centerXAt = ::centerXAt,
+        halfWidthAt = ::halfWidthAt,
+        yAt = ::yAt,
+    )
 
     drawAdasLaneAssist(
         adas = adas,
         centerXAt = ::centerXAt,
-        halfWidthAt = ::halfWidthAt,
+        laneOffsetAt = ::laneOffsetAt,
         yAt = ::yAt,
     )
 
     val dashSpacing = (32f + speedKmh * 0.28f).coerceIn(20f, 72f)
     val phase = roadPhase % dashSpacing
     var y = horizonY + phase
-    val laneColor = LauncherColors.TextSecondary.copy(alpha = 0.42f)
     while (y < h) {
         val t = ((y - horizonY) / (h - horizonY)).coerceIn(0f, 1f)
         val dashLen = (10f + t * 18f).coerceAtLeast(7f)
         val nextT = (((y + dashLen) - horizonY) / (h - horizonY)).coerceIn(0f, 1f)
-        listOf(-1f, 1f).forEach { side ->
+        // Markings fade into the haze with distance instead of staying flat.
+        val fade = distanceFade(t)
+        // Ego lane borders plus the two neighbouring lanes, as on a real HMI.
+        listOf(
+            -1f to 1f,
+            1f to 1f,
+            -3f to 0.55f,
+            3f to 0.55f,
+        ).forEach { (side, weight) ->
+            val x1 = centerXAt(t) + side * laneOffsetAt(t)
+            val x2 = centerXAt(nextT) + side * laneOffsetAt(nextT)
+            if (x1 < -w * 0.7f || x1 > w * 1.7f) return@forEach
             drawLine(
-                color = laneColor,
-                start = Offset(centerXAt(t) + side * laneOffsetAt(t), y),
-                end = Offset(centerXAt(nextT) + side * laneOffsetAt(nextT), y + dashLen),
-                strokeWidth = 2f,
+                color = Color.White.copy(alpha = 0.50f * fade * weight),
+                start = Offset(x1, y),
+                end = Offset(x2, y + dashLen),
+                strokeWidth = 1.6f + 1.6f * t,
             )
         }
         y += dashSpacing * (0.4f + 0.6f * t)
     }
 
+    drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
+
     val frontDistance = adas.frontObject.displayDistanceM
     if (adas.frontObject.valid && frontDistance != null) {
         if ((adas.accActive || adas.accStandby) && adas.timeGapLevel != null) {
-            drawTimeGapBars(
-                gapLevel = adas.timeGapLevel,
+            drawAccBeam(
                 objectDistanceM = frontDistance,
                 centerXAt = ::centerXAt,
-                halfWidthAt = ::halfWidthAt,
+                laneOffsetAt = ::laneOffsetAt,
                 yAt = ::yAt,
                 alert = adas.fcwActive || adas.distanceWarning,
             )
@@ -134,11 +157,10 @@ private fun DrawScope.drawVirtualRoad(
         )
     } else if ((adas.accActive || adas.accStandby) && adas.timeGapLevel != null) {
         // No target object — still show the selected following distance near ego.
-        drawTimeGapBars(
-            gapLevel = adas.timeGapLevel,
+        drawAccBeam(
             objectDistanceM = timeGapFallbackDistanceM(adas.timeGapLevel),
             centerXAt = ::centerXAt,
-            halfWidthAt = ::halfWidthAt,
+            laneOffsetAt = ::laneOffsetAt,
             yAt = ::yAt,
             alert = false,
         )
@@ -170,10 +192,99 @@ private fun DrawScope.drawVirtualRoad(
     // over the 3D car — avoids a second set of circles on the road.
 }
 
+/**
+ * Distance falloff for everything painted on the road: full strength near ego,
+ * dissolving into the haze towards the horizon.
+ */
+private fun distanceFade(t: Float): Float = (t.coerceIn(0f, 1f)).pow(0.62f)
+
+/** Asphalt wedge from the horizon down to ego, dark and fading out with distance. */
+private fun DrawScope.drawRoadSurface(
+    horizonY: Float,
+    centerXAt: (Float) -> Float,
+    halfWidthAt: (Float) -> Float,
+    yAt: (Float) -> Float,
+) {
+    val surface = Path().apply {
+        moveTo(centerXAt(0f) - halfWidthAt(0f), yAt(0f))
+        lineTo(centerXAt(0f) + halfWidthAt(0f), yAt(0f))
+        for (i in 1..10) {
+            val t = i / 10f
+            lineTo(centerXAt(t) + halfWidthAt(t), yAt(t))
+        }
+        for (i in 10 downTo 1) {
+            val t = i / 10f
+            lineTo(centerXAt(t) - halfWidthAt(t), yAt(t))
+        }
+        close()
+    }
+    drawPath(
+        path = surface,
+        brush = Brush.verticalGradient(
+            0f to Color(0xFF1B2634).copy(alpha = 0f),
+            0.35f to Color(0xFF1B2634).copy(alpha = 0.55f),
+            1f to Color(0xFF232F3E).copy(alpha = 0.92f),
+            startY = horizonY,
+            endY = size.height,
+        ),
+    )
+}
+
+/** Fog band at the horizon that swallows the road and the markings. */
+private fun DrawScope.drawHorizonHaze(horizonY: Float, canvasHeight: Float) {
+    val bg = LauncherColors.LeftPanelBg
+    val hazeBottom = horizonY + (canvasHeight - horizonY) * 0.34f
+    drawRect(
+        brush = Brush.verticalGradient(
+            0f to bg,
+            0.45f to bg.copy(alpha = 0.72f),
+            1f to bg.copy(alpha = 0f),
+            startY = horizonY - canvasHeight * 0.06f,
+            endY = hazeBottom,
+        ),
+        topLeft = Offset(0f, horizonY - canvasHeight * 0.06f),
+        size = Size(size.width, hazeBottom - horizonY + canvasHeight * 0.06f),
+    )
+}
+
+/** ACC following beam: a glowing wedge from ego up to the tracked target,
+ *  confined to the center (ego) lane — not the outer road shoulders. */
+private fun DrawScope.drawAccBeam(
+    objectDistanceM: Int,
+    centerXAt: (Float) -> Float,
+    laneOffsetAt: (Float) -> Float,
+    yAt: (Float) -> Float,
+    alert: Boolean,
+) {
+    val targetDepth = distanceToRoadDepth(objectDistanceM)
+    // Ego end sits just below the target band and above the 3D car.
+    val egoDepth = (targetDepth + 0.30f).coerceIn(targetDepth + 0.08f, 0.70f)
+    val nearHalf = laneOffsetAt(egoDepth) * 0.88f
+    val farHalf = laneOffsetAt(targetDepth) * 0.88f
+    val beam = Path().apply {
+        moveTo(centerXAt(egoDepth) - nearHalf, yAt(egoDepth))
+        lineTo(centerXAt(targetDepth) - farHalf, yAt(targetDepth))
+        lineTo(centerXAt(targetDepth) + farHalf, yAt(targetDepth))
+        lineTo(centerXAt(egoDepth) + nearHalf, yAt(egoDepth))
+        close()
+    }
+    val tint = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
+    drawPath(
+        path = beam,
+        brush = Brush.verticalGradient(
+            0f to tint.copy(alpha = 0.10f),
+            1f to tint.copy(alpha = 0.42f),
+            startY = yAt(targetDepth),
+            endY = yAt(egoDepth),
+        ),
+    )
+    drawPath(path = beam, color = tint.copy(alpha = 0.30f), style = Stroke(width = 1.5f))
+}
+
 private fun DrawScope.drawAdasLaneAssist(
     adas: LauncherAdasState,
     centerXAt: (Float) -> Float,
-    halfWidthAt: (Float) -> Float,
+    laneOffsetAt: (Float) -> Float,
     yAt: (Float) -> Float,
 ) {
     fun laneColor(side: LauncherAdasLaneVisualization, warning: Boolean): Color = when {
@@ -190,47 +301,20 @@ private fun DrawScope.drawAdasLaneAssist(
         val warning = lane == LauncherAdasLaneVisualization.Warning
         val color = laneColor(lane, warning)
         if (color == Color.Transparent) return@forEach
+        // Track the borders of the center (ego) lane, not the outer road edges.
         var prev = Offset(
-            centerXAt(1f) + side * (halfWidthAt(1f) - 6f),
+            centerXAt(1f) + side * laneOffsetAt(1f),
             yAt(1f),
         )
         for (i in 8 downTo 0) {
             val t = i / 8f
             val next = Offset(
-                centerXAt(t) + side * (halfWidthAt(t) - 6f),
+                centerXAt(t) + side * laneOffsetAt(t),
                 yAt(t),
             )
             drawLine(color = color, start = prev, end = next, strokeWidth = if (warning) 3.5f else 2.5f)
             prev = next
         }
-    }
-}
-
-/** OEM-like ACC following-distance chevrons between ego and the lead target. */
-private fun DrawScope.drawTimeGapBars(
-    gapLevel: Int,
-    objectDistanceM: Int,
-    centerXAt: (Float) -> Float,
-    halfWidthAt: (Float) -> Float,
-    yAt: (Float) -> Float,
-    alert: Boolean,
-) {
-    val bars = (gapLevel + 1).coerceIn(1, 3)
-    val objectDepth = distanceToRoadDepth(objectDistanceM)
-    // Ego reference just below the object band (still above the 3D car).
-    val egoDepth = (objectDepth + 0.18f).coerceAtMost(0.52f)
-    val color = if (alert) Color(0xFFEF4444).copy(alpha = 0.70f) else LauncherColors.AccentCyan.copy(alpha = 0.55f)
-    for (i in 0 until bars) {
-        val t = egoDepth - (egoDepth - objectDepth) * ((i + 1f) / (bars + 1f))
-        val cx = centerXAt(t)
-        val cy = yAt(t)
-        val half = halfWidthAt(t) * 0.22f
-        val path = Path().apply {
-            moveTo(cx - half, cy)
-            lineTo(cx, cy - half * 0.55f)
-            lineTo(cx + half, cy)
-        }
-        drawPath(path, color = color, style = Stroke(width = 2.4f))
     }
 }
 
@@ -257,20 +341,26 @@ private fun DrawScope.drawFrontObject(
     val strokeColor = baseColor.copy(alpha = 0.92f)
 
     val (objW, objH) = objectSizeForType(adas.frontObject.type, roadHalf)
-    drawFrontObjectSilhouette(
-        type = adas.frontObject.type,
-        cx = cx,
-        cy = cy,
-        objW = objW,
-        objH = objH,
-        fill = fillColor,
-        stroke = strokeColor,
-    )
+    if (adas.frontObject.type == LauncherAdasFrontObjectType.Car && !alert) {
+        // A plain car ahead reads better as a light 3/4-rear body than as a
+        // coloured wireframe; alerts still fall back to the high-contrast silhouette.
+        drawLeadCarBody(cx = cx, cy = cy, objW = objW * 1.35f, objH = objH * 1.15f)
+    } else {
+        drawFrontObjectSilhouette(
+            type = adas.frontObject.type,
+            cx = cx,
+            cy = cy,
+            objW = objW,
+            objH = objH,
+            fill = fillColor,
+            stroke = strokeColor,
+        )
+    }
 
-    // Distance label under the silhouette.
+    // Distance label above the vehicle, where the ACC beam ends.
     val paint = android.graphics.Paint().apply {
         isAntiAlias = true
-        color = strokeColor.toArgb()
+        color = (if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan).toArgb()
         textAlign = android.graphics.Paint.Align.CENTER
         textSize = (11f + depth * 6f).coerceIn(11f, 15f)
         typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -278,8 +368,73 @@ private fun DrawScope.drawFrontObject(
     drawContext.canvas.nativeCanvas.drawText(
         "${distanceM}m",
         cx,
-        cy + paint.textSize + 2f,
+        cy - objH * 1.35f - 4f,
         paint,
+    )
+}
+
+/** Neutral grey lead vehicle seen from behind, shaded to read as a real body. */
+private fun DrawScope.drawLeadCarBody(cx: Float, cy: Float, objW: Float, objH: Float) {
+    val bodyH = objH * 0.62f
+    val roofH = objH * 0.46f
+    val bodyTop = cy - bodyH
+    val roofW = objW * 0.72f
+
+    // Ground shadow keeps the car anchored to the asphalt.
+    drawOval(
+        color = Color.Black.copy(alpha = 0.35f),
+        topLeft = Offset(cx - objW * 0.52f, cy - objH * 0.06f),
+        size = Size(objW * 1.04f, objH * 0.18f),
+    )
+
+    // Greenhouse: roof, rear window, C-pillars.
+    val cabin = Path().apply {
+        moveTo(cx - objW * 0.40f, bodyTop)
+        lineTo(cx - roofW / 2f, bodyTop - roofH * 0.82f)
+        lineTo(cx + roofW / 2f, bodyTop - roofH * 0.82f)
+        lineTo(cx + objW * 0.40f, bodyTop)
+        close()
+    }
+    drawPath(cabin, color = Color(0xFFB9C2CC))
+    val glass = Path().apply {
+        moveTo(cx - objW * 0.33f, bodyTop - roofH * 0.12f)
+        lineTo(cx - roofW * 0.42f, bodyTop - roofH * 0.70f)
+        lineTo(cx + roofW * 0.42f, bodyTop - roofH * 0.70f)
+        lineTo(cx + objW * 0.33f, bodyTop - roofH * 0.12f)
+        close()
+    }
+    drawPath(glass, color = Color(0xFF39424E))
+
+    // Main body with a soft top-to-bottom shade.
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            0f to Color(0xFFD7DDE4),
+            1f to Color(0xFF98A2AE),
+            startY = bodyTop,
+            endY = cy,
+        ),
+        topLeft = Offset(cx - objW / 2f, bodyTop),
+        size = Size(objW, bodyH),
+        cornerRadius = CornerRadius(objW * 0.13f, objW * 0.13f),
+    )
+
+    // Tail lights and bumper shadow.
+    val lampW = objW * 0.20f
+    val lampH = bodyH * 0.24f
+    val lampY = bodyTop + bodyH * 0.26f
+    listOf(-1f, 1f).forEach { side ->
+        drawRoundRect(
+            color = Color(0xFFE05561).copy(alpha = 0.88f),
+            topLeft = Offset(cx + side * objW * 0.36f - lampW / 2f, lampY),
+            size = Size(lampW, lampH),
+            cornerRadius = CornerRadius(lampH * 0.4f, lampH * 0.4f),
+        )
+    }
+    drawRoundRect(
+        color = Color(0xFF6E7885).copy(alpha = 0.75f),
+        topLeft = Offset(cx - objW * 0.46f, cy - bodyH * 0.22f),
+        size = Size(objW * 0.92f, bodyH * 0.20f),
+        cornerRadius = CornerRadius(objW * 0.06f, objW * 0.06f),
     )
 }
 
@@ -472,7 +627,8 @@ private fun DrawScope.drawSpeedLimitSign(
 }
 
 private fun objectSizeForType(type: LauncherAdasFrontObjectType, roadHalf: Float): Pair<Float, Float> {
-    val base = roadHalf * 0.38f
+    // Scaled against the (now much wider) road, so a lead car keeps a plausible size.
+    val base = roadHalf * 0.26f
     return when (type) {
         LauncherAdasFrontObjectType.Bus ->
             base * 1.15f to base * 1.55f

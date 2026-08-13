@@ -53,6 +53,8 @@ import vad.dashing.tbox.ui.LaunchableAppEntry
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private const val LAUNCHER_MEDIA_SOURCE_ID = "launcher_mini_player"
+/** Slightly see-through card so the left-panel road/model shows through. */
+private const val MEDIA_CARD_ALPHA = 0.72f
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -117,7 +119,12 @@ fun LauncherMediaMiniPlayer(
                 val info = pm.getApplicationInfo(pkg, 0)
                 val label = pm.getApplicationLabel(info).toString()
                 val icon = runCatching {
-                    pm.getApplicationIcon(info).toBitmap().asImageBitmap()
+                    val sizePx = (64f * context.resources.displayMetrics.density).toInt().coerceIn(96, 256)
+                    val drawable = pm.getApplicationIcon(info)
+                    if (drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) {
+                        drawable.setBounds(0, 0, sizePx, sizePx)
+                    }
+                    drawable.toBitmap(sizePx, sizePx).asImageBitmap()
                 }.getOrNull()
                 LaunchableAppEntry(packageName = pkg, label = label, icon = icon, activityName = null)
             }.getOrNull()
@@ -155,7 +162,10 @@ fun LauncherMediaMiniPlayer(
             swatch?.let { lerp(LauncherColors.LeftPanelCard, Color(it.rgb), 0.42f) }
         }.getOrNull() ?: LauncherColors.LeftPanelCard
     }
-    val mediaCardColor by animateColorAsState(targetValue = mediaCardTarget, label = "mediaCardTint")
+    val mediaCardColor by animateColorAsState(
+        targetValue = mediaCardTarget.copy(alpha = MEDIA_CARD_ALPHA),
+        label = "mediaCardTint",
+    )
 
     val pickerTitle = stringResource(R.string.launcher_media_bind_player)
     LaunchedEffect(pickerVisible) {
