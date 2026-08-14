@@ -232,6 +232,25 @@ fun SimulationSectionCard(
                 )
                 SimulationPdcChannelsBlock()
 
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = stringResource(R.string.launcher_vs_sim_lights_header),
+                    color = SimulationRed,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_low_beam),
+                    active = LauncherDevVehicleState.lowBeam,
+                    onClick = { LauncherDevVehicleState.toggleLowBeam() },
+                )
+                SimulationToggleRow(
+                    label = stringResource(R.string.launcher_vs_sim_high_beam),
+                    active = LauncherDevVehicleState.highBeam,
+                    onClick = { LauncherDevVehicleState.toggleHighBeam() },
+                )
+
                 Spacer(Modifier.height(4.dp))
                 SimulationTireRow(
                     label = stringResource(R.string.launcher_vs_sim_tire_fl),

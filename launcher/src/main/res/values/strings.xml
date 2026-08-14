@@ -352,6 +352,9 @@
     <string name="launcher_vs_sim_pdc_front">Парктроник передний</string>
     <string name="launcher_vs_sim_pdc_rear">Парктроник задний</string>
     <string name="launcher_vs_sim_pdc_channels">Датчики поканально</string>
+    <string name="launcher_vs_sim_lights_header">Свет</string>
+    <string name="launcher_vs_sim_low_beam">Ближний свет</string>
+    <string name="launcher_vs_sim_high_beam">Дальний свет</string>
     <string name="launcher_vs_dark_theme">Тёмная тема лаунчера</string>
     <string name="launcher_pdc_fsl">Перед · левый боковой</string>
     <string name="launcher_pdc_fl">Перед · левый</string>

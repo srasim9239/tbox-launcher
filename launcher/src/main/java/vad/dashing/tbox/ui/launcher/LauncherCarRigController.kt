@@ -357,6 +357,111 @@ class LauncherCarRigController private constructor(
         }
     }
 
+    /**
+     * Ground-plane headlight cones in front of the bumper, projected through the
+     * scene camera the same way as PDC rings so they stay glued to the 3D body.
+     */
+    fun projectHeadlightBeams(
+        cameraNode: CameraNode,
+        viewportWidthPx: Int,
+        viewportHeightPx: Int,
+        driveBlend: Float = 0f,
+    ): LauncherHeadlightFrame? {
+        if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return null
+        fun wheelWorld(name: String): FloatArray? {
+            val node = boundNodes[name] ?: return null
+            val world = FloatArray(16)
+            transformManager.getWorldTransform(node.instance, world)
+            return world
+        }
+        val fl = wheelWorld(WHEEL_FL) ?: return null
+        val fr = wheelWorld(WHEEL_FR) ?: return null
+        val rl = wheelWorld(WHEEL_RL) ?: return null
+        val rr = wheelWorld(WHEEL_RR) ?: return null
+
+        val frontX = (fl[12] + fr[12]) / 2f
+        val frontZ = (fl[14] + fr[14]) / 2f
+        val rearX = (rl[12] + rr[12]) / 2f
+        val rearZ = (rl[14] + rr[14]) / 2f
+        val groundY = (fl[13] + fr[13] + rl[13] + rr[13]) / 4f + 0.04f
+
+        var fwdX = frontX - rearX
+        var fwdZ = frontZ - rearZ
+        val wheelbase = kotlin.math.hypot(fwdX.toDouble(), fwdZ.toDouble()).toFloat()
+        if (wheelbase < 0.1f) return null
+        fwdX /= wheelbase
+        fwdZ /= wheelbase
+        val leftX = -fwdZ
+        val leftZ = fwdX
+        val halfTrack = kotlin.math.hypot(
+            (fl[12] - fr[12]).toDouble(),
+            (fl[14] - fr[14]).toDouble(),
+        ).toFloat() / 2f
+        if (halfTrack < 0.05f) return null
+        val worldPerMeter = wheelbase / 2.72f
+
+        val cameraPosition = cameraNode.worldPosition
+        val cameraForward = cameraNode.forwardDirection
+        fun project(wx: Float, wy: Float, wz: Float): Offset? {
+            val depth =
+                (wx - cameraPosition.x) * cameraForward.x +
+                    (wy - cameraPosition.y) * cameraForward.y +
+                    (wz - cameraPosition.z) * cameraForward.z
+            if (!depth.isFinite() || depth <= cameraNode.near) return null
+            val screen = cameraNode.worldToScreenPoint(Vector3(wx, wy, wz))
+            if (!screen.x.isFinite() || !screen.y.isFinite()) return null
+            return Offset(
+                screen.x.coerceIn(-viewportWidthPx * 0.5f, viewportWidthPx * 1.5f),
+                screen.y.coerceIn(-viewportHeightPx * 0.5f, viewportHeightPx * 1.5f),
+            )
+        }
+
+        val bumperX = frontX + fwdX * wheelbase * 0.10f
+        val bumperZ = frontZ + fwdZ * wheelbase * 0.10f
+        val lampSpread = halfTrack * 0.78f
+        val leftOx = bumperX + leftX * lampSpread
+        val leftOz = bumperZ + leftZ * lampSpread
+        val rightOx = bumperX - leftX * lampSpread
+        val rightOz = bumperZ - leftZ * lampSpread
+        val leftOrigin = project(leftOx, groundY, leftOz) ?: return null
+        val rightOrigin = project(rightOx, groundY, rightOz) ?: return null
+
+        fun fan(
+            ox: Float,
+            oz: Float,
+            lengthM: Float,
+            halfAngleDeg: Float,
+            samples: Int = 8,
+        ): List<Offset> {
+            val length = lengthM * worldPerMeter
+            return (-samples..samples).mapNotNull { i ->
+                val a = Math.toRadians((halfAngleDeg * i / samples).toDouble())
+                val c = kotlin.math.cos(a).toFloat()
+                val s = kotlin.math.sin(a).toFloat()
+                val dirX = fwdX * c + leftX * s
+                val dirZ = fwdZ * c + leftZ * s
+                project(ox + dirX * length, groundY, oz + dirZ * length)
+            }
+        }
+
+        val lengthScale = 1f + 0.30f * driveBlend.coerceIn(0f, 1f)
+        val leftLow = fan(leftOx, leftOz, lengthM = 3.1f * lengthScale, halfAngleDeg = 22f)
+        val rightLow = fan(rightOx, rightOz, lengthM = 3.1f * lengthScale, halfAngleDeg = 22f)
+        val leftHigh = fan(leftOx, leftOz, lengthM = 6.0f * lengthScale, halfAngleDeg = 22f)
+        val rightHigh = fan(rightOx, rightOz, lengthM = 6.0f * lengthScale, halfAngleDeg = 22f)
+        if (leftLow.size < 3 || rightLow.size < 3 || leftHigh.size < 3 || rightHigh.size < 3) {
+            return null
+        }
+        return LauncherHeadlightFrame(
+            leftOrigin = leftOrigin,
+            rightOrigin = rightOrigin,
+            leftLowFan = leftLow,
+            rightLowFan = rightLow,
+            leftHighFan = leftHigh,
+            rightHighFan = rightHigh,
+        )
+    }
+
     private fun pdcAngularDiffDeg(a: Float, b: Float): Float {
         var d = kotlin.math.abs(a - b) % 360f
         if (d > 180f) d = 360f - d

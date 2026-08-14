@@ -251,7 +251,7 @@ fun LauncherVehicleSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(LauncherColors.SettingsBackground)
-            .padding(10.dp),
+            .padding(start = 10.dp, top = 10.dp, end = 10.dp, bottom = 82.dp),
     ) {
         Column(
             modifier = Modifier

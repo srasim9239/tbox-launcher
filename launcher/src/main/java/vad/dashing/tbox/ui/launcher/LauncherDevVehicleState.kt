@@ -37,6 +37,8 @@ object LauncherDevVehicleState {
     var adasFrontObjectM by mutableFloatStateOf(0f)
     /** Per-channel parking distances (cm); absent = sensor silent. */
     val pdcChannels = androidx.compose.runtime.mutableStateMapOf<LauncherPdcChannel, Float>()
+    var lowBeam by mutableStateOf(false)
+    var highBeam by mutableStateOf(false)
 
     fun cycleBsdLeft() {
         simulateEnabled = true
@@ -96,6 +98,20 @@ object LauncherDevVehicleState {
         setPdcChannel(LauncherPdcChannel.RearMidLeft, scaled(0.85f))
         setPdcChannel(LauncherPdcChannel.RearMidRight, scaled(0.7f))
         setPdcChannel(LauncherPdcChannel.RearRight, scaled(0.55f))
+    }
+
+    fun toggleLowBeam() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        lowBeam = !lowBeam
+        if (!lowBeam) highBeam = false
+    }
+
+    fun toggleHighBeam() {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        highBeam = !highBeam
+        if (highBeam) lowBeam = true
     }
 
     fun pdcFrontGroupValue(): Float = pdcChannels[LauncherPdcChannel.FrontSideLeft] ?: 150f
@@ -313,6 +329,8 @@ object LauncherDevVehicleState {
         adasBsdRight = LauncherRearThreatLevel.Off
         adasFrontObjectM = 0f
         pdcChannels.clear()
+        lowBeam = false
+        highBeam = false
         LauncherVehicleAlertsRepository.refresh()
     }
 }

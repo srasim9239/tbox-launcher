@@ -101,6 +101,7 @@ fun LauncherLeftPanel(
     val effectiveTires = LauncherDevVehicleState.tireStateOrNull() ?: tires
     // Same for ADAS: cruise/BSD/PDC sim replaces the live mbCAN state.
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
+    val headlightBeams = rememberHeadlightBeams()
 
     val rigState = LauncherCarRigState(
         doorFlOpen = effectiveBody.doorFlOpen,
@@ -116,6 +117,7 @@ fun LauncherLeftPanel(
         mutableStateOf<Map<LauncherWheelCorner, Offset>>(emptyMap())
     }
     var pdcRings by remember { mutableStateOf<LauncherPdcRingFrame?>(null) }
+    var headlightFrame by remember { mutableStateOf<LauncherHeadlightFrame?>(null) }
 
     // Simulation gear override (hidden settings tab) takes precedence over live gearbox.
     val activeGear = LauncherDevVehicleState.gearSlotOverride
@@ -276,7 +278,7 @@ fun LauncherLeftPanel(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
+                .padding(top = 8.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (!carHidden) {
@@ -296,6 +298,7 @@ fun LauncherLeftPanel(
                     settingsUserYawDeg = settingsUserYawDeg,
                     onWheelAnchorsChanged = { wheelAnchors = it },
                     onPdcRingsChanged = { pdcRings = it },
+                    onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
                     textureSurface = racing,
                     modifier = Modifier
@@ -332,6 +335,11 @@ fun LauncherLeftPanel(
                         driving = inDriveGear || steerPreview,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    LauncherHeadlightOverlay(
+                        beams = headlightBeams,
+                        frame = headlightFrame,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
             if (!racing) {
@@ -346,6 +354,33 @@ fun LauncherLeftPanel(
                         ),
                 )
             }
+            if (racing) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        ),
+                ) {
+                    LauncherEggRaceControls(modifier = Modifier.fillMaxWidth())
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                        ),
+                ) {
+                    LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                }
+            }
             if (colorPickerVisible) {
                 LauncherCarColorPicker(
                     selectedId = paintId,
@@ -359,12 +394,6 @@ fun LauncherLeftPanel(
                         .padding(bottom = 8.dp),
                 )
             }
-        }
-
-        if (racing) {
-            LauncherEggRaceControls()
-        } else {
-            LauncherMediaMiniPlayer()
         }
         }
         if (racing) {

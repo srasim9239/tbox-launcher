@@ -88,6 +88,9 @@
     <string name="launcher_vs_headlights_position">Position</string>
     <string name="launcher_vs_headlights_low">Low beam</string>
     <string name="launcher_vs_headlights_auto">Auto</string>
+    <string name="launcher_vs_sim_lights_header">Lights</string>
+    <string name="launcher_vs_sim_low_beam">Low beam</string>
+    <string name="launcher_vs_sim_high_beam">High beam</string>
     <string name="action_send">Send</string>
     <string name="action_get_all_sms">Get all SMS</string>
 

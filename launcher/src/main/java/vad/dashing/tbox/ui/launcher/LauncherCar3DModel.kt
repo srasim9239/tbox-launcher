@@ -53,8 +53,8 @@ private val TOP_CAMERA_TARGET = Float3(0f, 0f, 0f)
 private val DRIVE_CAMERA_POS = Float3(0f, 1.05f, 3.7f)
 private val DRIVE_CAMERA_TARGET = Float3(0f, 0.25f, -2.2f)
 /** Settings camera keeps the whole car in frame and clear of the near clipping plane. */
-private val SETTINGS_CAMERA_POS = Float3(1.35f, 1.05f, 2.55f)
-private val SETTINGS_CAMERA_TARGET = Float3(0f, 0.18f, 0f)
+private val SETTINGS_CAMERA_POS = Float3(1.15f, 1.05f, 2.55f)
+private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 
 private const val HOME_MODEL_SCALE = 0.52f
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
@@ -62,7 +62,7 @@ private const val SETTINGS_MODEL_SCALE = 0.48f
 internal const val SETTINGS_USER_SCALE_MIN = 1.20f
 internal const val SETTINGS_USER_SCALE_MAX = 1.45f
 private const val HOME_MODEL_X = 0f
-private const val SETTINGS_MODEL_X = 0f
+private const val SETTINGS_MODEL_X = 0.14f
 private const val HOME_MODEL_Y = -0.1f
 private const val SETTINGS_MODEL_Y = -0.02f
 private const val HOME_MODEL_Z = 0f
@@ -91,6 +91,7 @@ fun LauncherCar3DModel(
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit = {},
     onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit = {},
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit = {},
+    onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
     textureSurface: Boolean = false,
 ) {
@@ -130,6 +131,7 @@ fun LauncherCar3DModel(
             onWheelAnchorsChanged = onWheelAnchorsChanged,
             onDoorAnchorsChanged = onDoorAnchorsChanged,
             onPdcRingsChanged = onPdcRingsChanged,
+            onHeadlightFrameChanged = onHeadlightFrameChanged,
             onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
             textureSurface = textureSurface,
         )
@@ -159,6 +161,7 @@ private fun LauncherCarFilamentModel(
     onWheelAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
     onDoorAnchorsChanged: (Map<LauncherWheelCorner, Offset>) -> Unit,
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit,
+    onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit,
     onBodyRigAvailabilityChanged: (Boolean) -> Unit,
     textureSurface: Boolean = false,
 ) {
@@ -177,6 +180,7 @@ private fun LauncherCarFilamentModel(
     val anchorCallbackRef = rememberUpdatedState(onWheelAnchorsChanged)
     val doorAnchorCallbackRef = rememberUpdatedState(onDoorAnchorsChanged)
     val pdcRingsCallbackRef = rememberUpdatedState(onPdcRingsChanged)
+    val headlightFrameCallbackRef = rememberUpdatedState(onHeadlightFrameChanged)
     val rigAvailabilityCallbackRef = rememberUpdatedState(onBodyRigAvailabilityChanged)
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
@@ -404,6 +408,19 @@ private fun LauncherCarFilamentModel(
                                 viewportHeightPx = viewport?.height ?: 0,
                             ),
                         )
+                        // Headlight overlay is home-only; skip projection in vehicle settings.
+                        if (currentTransition < 0.5f) {
+                            headlightFrameCallbackRef.value(
+                                rigController?.projectHeadlightBeams(
+                                    cameraNode = cameraNode,
+                                    viewportWidthPx = viewport?.width ?: 0,
+                                    viewportHeightPx = viewport?.height ?: 0,
+                                    driveBlend = driveBlend,
+                                ),
+                            )
+                        } else {
+                            headlightFrameCallbackRef.value(null)
+                        }
                     }
                 },
             ) {

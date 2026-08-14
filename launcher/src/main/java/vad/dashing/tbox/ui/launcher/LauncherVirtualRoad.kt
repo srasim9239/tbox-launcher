@@ -643,68 +643,144 @@ private fun DrawScope.drawOncomingCarFront(
     )
 }
 
-/** Neutral grey lead vehicle seen from behind, shaded to read as a real body. */
+/** Modern hatchback/crossover seen from behind: full-width LED bar, floating roof. */
 private fun DrawScope.drawLeadCarBody(cx: Float, cy: Float, objW: Float, objH: Float) {
-    val bodyH = objH * 0.62f
-    val roofH = objH * 0.46f
-    val bodyTop = cy - bodyH
-    val roofW = objW * 0.72f
+    val w = objW
+    val h = objH
+    val paint = Color(0xFFE4E8EE)
+    val bodyLo = Color(0xFF8F97A2)
+    val roofY = cy - h * 0.98f
+    val glassBottom = cy - h * 0.52f
+    val lampY = cy - h * 0.36f
+    val bumperY = cy - h * 0.16f
+    val roofW = w * 0.56f
+    val shoulderW = w * 0.90f
 
-    // Ground shadow keeps the car anchored to the asphalt.
     drawOval(
-        color = Color.Black.copy(alpha = 0.35f),
-        topLeft = Offset(cx - objW * 0.52f, cy - objH * 0.06f),
-        size = Size(objW * 1.04f, objH * 0.18f),
+        color = Color.Black.copy(alpha = 0.38f),
+        topLeft = Offset(cx - w * 0.56f, cy - h * 0.05f),
+        size = Size(w * 1.12f, h * 0.16f),
     )
 
-    // Greenhouse: roof, rear window, C-pillars.
-    val cabin = Path().apply {
-        moveTo(cx - objW * 0.40f, bodyTop)
-        lineTo(cx - roofW / 2f, bodyTop - roofH * 0.82f)
-        lineTo(cx + roofW / 2f, bodyTop - roofH * 0.82f)
-        lineTo(cx + objW * 0.40f, bodyTop)
-        close()
-    }
-    drawPath(cabin, color = Color(0xFFB9C2CC))
-    val glass = Path().apply {
-        moveTo(cx - objW * 0.33f, bodyTop - roofH * 0.12f)
-        lineTo(cx - roofW * 0.42f, bodyTop - roofH * 0.70f)
-        lineTo(cx + roofW * 0.42f, bodyTop - roofH * 0.70f)
-        lineTo(cx + objW * 0.33f, bodyTop - roofH * 0.12f)
-        close()
-    }
-    drawPath(glass, color = Color(0xFF39424E))
-
-    // Main body with a soft top-to-bottom shade.
-    drawRoundRect(
-        brush = Brush.verticalGradient(
-            0f to Color(0xFFD7DDE4),
-            1f to Color(0xFF98A2AE),
-            startY = bodyTop,
-            endY = cy,
-        ),
-        topLeft = Offset(cx - objW / 2f, bodyTop),
-        size = Size(objW, bodyH),
-        cornerRadius = CornerRadius(objW * 0.13f, objW * 0.13f),
-    )
-
-    // Tail lights and bumper shadow.
-    val lampW = objW * 0.20f
-    val lampH = bodyH * 0.24f
-    val lampY = bodyTop + bodyH * 0.26f
+    val wheelW = w * 0.17f
+    val wheelH = h * 0.13f
     listOf(-1f, 1f).forEach { side ->
-        drawRoundRect(
-            color = Color(0xFFE05561).copy(alpha = 0.88f),
-            topLeft = Offset(cx + side * objW * 0.36f - lampW / 2f, lampY),
-            size = Size(lampW, lampH),
-            cornerRadius = CornerRadius(lampH * 0.4f, lampH * 0.4f),
+        val wx = cx + side * w * 0.40f - wheelW / 2f
+        val wy = cy - wheelH * 0.42f
+        drawOval(Color(0xFF14161A), Offset(wx, wy), Size(wheelW, wheelH))
+        drawOval(
+            Color(0xFF8B919A),
+            Offset(wx + wheelW * 0.22f, wy + wheelH * 0.22f),
+            Size(wheelW * 0.56f, wheelH * 0.56f),
         )
     }
+
+    val body = Path().apply {
+        moveTo(cx - roofW / 2f, roofY + h * 0.10f)
+        quadraticTo(cx, roofY - h * 0.01f, cx + roofW / 2f, roofY + h * 0.10f)
+        lineTo(cx + shoulderW / 2f, glassBottom)
+        lineTo(cx + w * 0.50f, bumperY)
+        quadraticTo(cx + w * 0.50f, cy + h * 0.01f, cx + w * 0.34f, cy - h * 0.015f)
+        lineTo(cx - w * 0.34f, cy - h * 0.015f)
+        quadraticTo(cx - w * 0.50f, cy + h * 0.01f, cx - w * 0.50f, bumperY)
+        lineTo(cx - shoulderW / 2f, glassBottom)
+        close()
+    }
+    drawPath(
+        path = body,
+        brush = Brush.verticalGradient(
+            0f to Color.White,
+            0.42f to paint,
+            1f to bodyLo,
+            startY = roofY,
+            endY = cy,
+        ),
+    )
+
     drawRoundRect(
-        color = Color(0xFF6E7885).copy(alpha = 0.75f),
-        topLeft = Offset(cx - objW * 0.46f, cy - bodyH * 0.22f),
-        size = Size(objW * 0.92f, bodyH * 0.20f),
-        cornerRadius = CornerRadius(objW * 0.06f, objW * 0.06f),
+        color = Color(0xFF2A3038),
+        topLeft = Offset(cx - roofW * 0.42f, roofY + h * 0.04f),
+        size = Size(roofW * 0.84f, h * 0.045f),
+        cornerRadius = CornerRadius(h * 0.02f, h * 0.02f),
+    )
+
+    val glass = Path().apply {
+        moveTo(cx - roofW * 0.40f, roofY + h * 0.14f)
+        lineTo(cx + roofW * 0.40f, roofY + h * 0.14f)
+        lineTo(cx + shoulderW * 0.36f, glassBottom - h * 0.04f)
+        lineTo(cx - shoulderW * 0.36f, glassBottom - h * 0.04f)
+        close()
+    }
+    drawPath(
+        path = glass,
+        brush = Brush.verticalGradient(
+            0f to Color(0xFF6A7A8C),
+            0.45f to Color(0xFF2A3340),
+            1f to Color(0xFF151B22),
+            startY = roofY,
+            endY = glassBottom,
+        ),
+    )
+
+    val barW = w * 0.78f
+    val barH = h * 0.042f
+    val barLeft = cx - barW / 2f
+    val barTop = lampY - barH / 2f
+    drawRoundRect(
+        color = Color(0xFFE05561).copy(alpha = 0.28f),
+        topLeft = Offset(barLeft - w * 0.03f, barTop - h * 0.02f),
+        size = Size(barW + w * 0.06f, barH + h * 0.04f),
+        cornerRadius = CornerRadius(barH, barH),
+    )
+    drawRoundRect(
+        color = Color(0xFFC43B44),
+        topLeft = Offset(barLeft, barTop),
+        size = Size(barW, barH),
+        cornerRadius = CornerRadius(barH, barH),
+    )
+    val lampW = w * 0.20f
+    val lampH = h * 0.09f
+    listOf(-1f, 1f).forEach { side ->
+        val lx = cx + side * w * 0.32f - lampW / 2f
+        drawRoundRect(
+            color = Color(0xFFFF6B73).copy(alpha = 0.45f),
+            topLeft = Offset(lx - w * 0.01f, lampY - lampH * 0.62f),
+            size = Size(lampW + w * 0.02f, lampH * 1.15f),
+            cornerRadius = CornerRadius(lampH * 0.5f, lampH * 0.5f),
+        )
+        drawRoundRect(
+            brush = Brush.horizontalGradient(
+                0f to Color(0xFFFF8A90),
+                1f to Color(0xFFB3262E),
+            ),
+            topLeft = Offset(lx, lampY - lampH * 0.48f),
+            size = Size(lampW, lampH),
+            cornerRadius = CornerRadius(lampH * 0.48f, lampH * 0.48f),
+        )
+    }
+
+    val intakeW = w * 0.58f
+    val intakeH = h * 0.09f
+    drawRoundRect(
+        color = Color(0xFF14181D),
+        topLeft = Offset(cx - intakeW / 2f, bumperY - intakeH * 0.15f),
+        size = Size(intakeW, intakeH),
+        cornerRadius = CornerRadius(intakeH * 0.35f, intakeH * 0.35f),
+    )
+    val plateW = w * 0.28f
+    val plateH = h * 0.07f
+    drawRoundRect(
+        color = Color(0xFFE7E7E2),
+        topLeft = Offset(cx - plateW / 2f, bumperY + intakeH * 0.18f),
+        size = Size(plateW, plateH),
+        cornerRadius = CornerRadius(plateH * 0.12f, plateH * 0.12f),
+    )
+    drawRoundRect(
+        color = Color(0xFF3A4048),
+        topLeft = Offset(cx - plateW / 2f, bumperY + intakeH * 0.18f),
+        size = Size(plateW, plateH),
+        cornerRadius = CornerRadius(plateH * 0.12f, plateH * 0.12f),
+        style = Stroke(width = 1.2f),
     )
 }
 
