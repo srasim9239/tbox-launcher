@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -147,7 +149,7 @@ fun LauncherMediaMiniPlayer(
     val openActivePlayer: () -> Unit = {
         activePkg.takeIf { it.isNotBlank() }?.let { launchLauncherApp(context, it) }
     }
-    val title = mediaState.track.ifBlank { stringResource(R.string.launcher_media_no_track) }
+    val title = mediaState.track
     val artist = mediaState.artist
     val isPlaying = mediaState.isPlaying
     val albumArtBitmap = remember(activePkg, playerStates, title) {
@@ -206,133 +208,95 @@ fun LauncherMediaMiniPlayer(
     )
     }
 
+    val expanded = title.isNotBlank() || isPlaying || albumArtBitmap != null
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(mediaCardColor)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .animateContentSize()
+            .padding(
+                horizontal = 10.dp,
+                vertical = if (expanded) 12.dp else 4.dp,
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (expanded) 10.dp else 0.dp),
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(LauncherColors.LeftPanelBg)
-                    .clickable(enabled = activePkg.isNotBlank(), onClick = openActivePlayer),
-                contentAlignment = Alignment.Center,
+        if (expanded) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (albumArtBitmap != null && notificationAccessGranted) {
-                    Image(
-                        bitmap = albumArtBitmap,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(10.dp)),
-                        contentScale = ContentScale.Crop,
-                    )
-                } else {
-                    Text("♪", fontSize = 20.sp, color = LauncherColors.LeftTextSecondary)
-                }
-            }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(
-                        enabled = notificationAccessGranted && activePkg.isNotBlank(),
-                        onClick = openActivePlayer,
-                    ),
-            ) {
-                if (!notificationAccessGranted) {
-                    Text(
-                        text = stringResource(R.string.widget_music_access_required),
-                        style = MaterialTheme.typography.tboxCaption,
-                        color = LauncherColors.AccentCyan,
-                        fontSize = 11.sp,
-                        maxLines = 2,
-                        modifier = Modifier.clickable { openNotificationListenerSettings(context) },
-                    )
-                } else {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.tboxCaption,
-                        color = LauncherColors.LeftTextPrimary,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip,
-                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
-                    )
-                    if (artist.isNotBlank()) {
+                LauncherMediaAlbumArt(
+                    bitmap = albumArtBitmap,
+                    size = 52.dp,
+                    corner = 10.dp,
+                    showArt = notificationAccessGranted,
+                    onClick = openActivePlayer,
+                    clickEnabled = activePkg.isNotBlank(),
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .width(0.dp)
+                        .clickable(
+                            enabled = notificationAccessGranted && activePkg.isNotBlank(),
+                            onClick = openActivePlayer,
+                        ),
+                ) {
+                    if (!notificationAccessGranted) {
                         Text(
-                            text = artist,
+                            text = stringResource(R.string.widget_music_access_required),
                             style = MaterialTheme.typography.tboxCaption,
-                            color = LauncherColors.LeftTextSecondary,
-                            fontSize = 12.sp,
+                            color = LauncherColors.AccentCyan,
+                            fontSize = 11.sp,
+                            maxLines = 2,
+                            modifier = Modifier.clickable { openNotificationListenerSettings(context) },
+                        )
+                    } else {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.tboxCaption,
+                            color = LauncherColors.LeftTextPrimary,
+                            fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Clip,
                             modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                         )
+                        if (artist.isNotBlank()) {
+                            Text(
+                                text = artist,
+                                style = MaterialTheme.typography.tboxCaption,
+                                color = LauncherColors.LeftTextSecondary,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                            )
+                        }
                     }
                 }
+                LauncherMediaMenuButton(onClick = { pickerVisible = true })
             }
-            if (mediaState.supportsLike && notificationAccessGranted) {
-                IconButton(
-                    onClick = {
-                        SharedMediaControlService.toggleLike(
-                            selectedPackages = monitorPackages,
-                            preferredPackage = activePkg,
-                        )
-                    },
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(
-                        painter = painterResource(
-                            if (mediaState.isLiked == true) R.drawable.ic_launcher_heart
-                            else R.drawable.ic_launcher_heart_outline,
-                        ),
-                        contentDescription = null,
-                        tint = if (mediaState.isLiked == true) Color(0xFFE57373) else LauncherColors.LeftTextSecondary,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-            IconButton(
-                onClick = { pickerVisible = true },
-                modifier = Modifier.size(36.dp),
-            ) {
-                Icon(
-                    Icons.Filled.MoreVert,
-                    contentDescription = stringResource(R.string.launcher_media_bind_player),
-                    tint = LauncherColors.LeftTextSecondary,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LauncherMediaIconButton(
-                iconRes = R.drawable.skip_previous,
+            LauncherMediaTransportRow(
+                isPlaying = isPlaying,
                 enabled = notificationAccessGranted && activePkg.isNotBlank(),
-                onClick = {
+                playEnabled = activePkg.isNotBlank(),
+                showLike = notificationAccessGranted,
+                isLiked = mediaState.isLiked == true,
+                onLike = {
+                    SharedMediaControlService.toggleLike(
+                        selectedPackages = monitorPackages,
+                        preferredPackage = activePkg,
+                    )
+                },
+                onPrev = {
                     SharedMediaControlService.skipToPrevious(
                         selectedPackages = monitorPackages,
                         preferredPackage = activePkg,
                     )
                 },
-            )
-            LauncherMediaIconButton(
-                iconRes = if (isPlaying) R.drawable.pause else R.drawable.play,
-                iconSize = 28.dp,
-                buttonSize = 44.dp,
-                enabled = activePkg.isNotBlank(),
-                onClick = {
+                onPlayPause = {
                     SharedMediaControlService.playPause(
                         context = context,
                         selectedPackages = monitorPackages,
@@ -341,17 +305,145 @@ fun LauncherMediaMiniPlayer(
                         launchAppIfNeeded = false,
                     )
                 },
-            )
-            LauncherMediaIconButton(
-                iconRes = R.drawable.next_track,
-                enabled = notificationAccessGranted && activePkg.isNotBlank(),
-                onClick = {
+                onNext = {
                     SharedMediaControlService.skipToNext(
                         selectedPackages = monitorPackages,
                         preferredPackage = activePkg,
                     )
                 },
             )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LauncherMediaIconButton(
+                    iconRes = R.drawable.play,
+                    iconSize = 24.dp,
+                    buttonSize = 40.dp,
+                    enabled = true,
+                    onClick = {
+                        if (activePkg.isBlank()) {
+                            pickerVisible = true
+                        } else {
+                            SharedMediaControlService.playPause(
+                                context = context,
+                                selectedPackages = monitorPackages.ifEmpty { setOf(activePkg) },
+                                preferredPackage = activePkg,
+                                keepPlayerForeground = false,
+                                launchAppIfNeeded = true,
+                            )
+                        }
+                    },
+                )
+                LauncherMediaMenuButton(onClick = { pickerVisible = true })
+            }
+        }
+    }
+}
+
+@Composable
+private fun LauncherMediaAlbumArt(
+    bitmap: androidx.compose.ui.graphics.ImageBitmap?,
+    size: androidx.compose.ui.unit.Dp,
+    corner: androidx.compose.ui.unit.Dp,
+    showArt: Boolean,
+    onClick: () -> Unit,
+    clickEnabled: Boolean,
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(corner))
+            .background(LauncherColors.LeftPanelBg)
+            .clickable(enabled = clickEnabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (bitmap != null && showArt) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(size)
+                    .clip(RoundedCornerShape(corner)),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Text(
+                "♪",
+                fontSize = if (size < 40.dp) 14.sp else 20.sp,
+                color = LauncherColors.LeftTextSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherMediaMenuButton(onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(36.dp),
+    ) {
+        Icon(
+            Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.launcher_media_bind_player),
+            tint = LauncherColors.LeftTextSecondary,
+            modifier = Modifier.size(20.dp),
+        )
+    }
+}
+
+@Composable
+private fun LauncherMediaTransportRow(
+    isPlaying: Boolean,
+    enabled: Boolean,
+    playEnabled: Boolean,
+    onPrev: () -> Unit,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    showLike: Boolean = false,
+    isLiked: Boolean = false,
+    onLike: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LauncherMediaIconButton(
+            iconRes = R.drawable.skip_previous,
+            enabled = enabled,
+            onClick = onPrev,
+        )
+        LauncherMediaIconButton(
+            iconRes = if (isPlaying) R.drawable.pause else R.drawable.play,
+            iconSize = 28.dp,
+            buttonSize = 44.dp,
+            enabled = playEnabled,
+            onClick = onPlayPause,
+        )
+        LauncherMediaIconButton(
+            iconRes = R.drawable.next_track,
+            enabled = enabled,
+            onClick = onNext,
+        )
+        if (showLike) {
+            IconButton(
+                onClick = onLike,
+                modifier = Modifier.size(40.dp),
+            ) {
+                Icon(
+                    painter = painterResource(
+                        if (isLiked) R.drawable.ic_launcher_heart
+                        else R.drawable.ic_launcher_heart_outline,
+                    ),
+                    contentDescription = null,
+                    tint = if (isLiked) Color(0xFFE57373) else LauncherColors.LeftTextPrimary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
     }
 }

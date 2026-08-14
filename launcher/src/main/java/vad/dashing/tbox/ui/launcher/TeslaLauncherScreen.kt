@@ -120,6 +120,9 @@ fun TeslaLauncherScreen(
 
     // Standalone launcher is dark-first; TBox theme channel is idle without the proxy.
     TboxAppTheme(theme = 2) {
+        BackHandler(LauncherEggRace.active) {
+            LauncherEggRace.stop()
+        }
         BackHandler(settingsOpen) {
             closeVehicleSettings()
         }
@@ -130,7 +133,7 @@ fun TeslaLauncherScreen(
                 appDrawerVisible = false
             }
         }
-        BackHandler(enabled = !appDrawerVisible && !settingsOpen) {
+        BackHandler(enabled = !appDrawerVisible && !settingsOpen && !LauncherEggRace.active) {
             goLauncherBack(
                 context = context,
                 vehicleSettingsOpen = false,

@@ -351,11 +351,19 @@ object SharedMediaControlService {
                 strictPreferred = preferredPackage.isNotBlank(),
             ) ?: return
             val playbackState = controller.playbackState
-            if ((playbackState?.actions ?: 0L) and PlaybackState.ACTION_SET_RATING == 0L) return
-            val metadata = controller.metadata
-            val current = metadata.extractUserRating()
-            val likedNow = current?.isRated == true && current.ratingStyle == Rating.RATING_HEART && current.hasHeart()
-            controller.transportControls.setRating(Rating.newHeartRating(!likedNow))
+            val canRate = ((playbackState?.actions ?: 0L) and PlaybackState.ACTION_SET_RATING) != 0L
+            if (canRate) {
+                val metadata = controller.metadata
+                val current = metadata.extractUserRating()
+                val likedNow = current?.isRated == true &&
+                    current.ratingStyle == Rating.RATING_HEART &&
+                    current.hasHeart()
+                controller.transportControls.setRating(Rating.newHeartRating(!likedNow))
+                return
+            }
+            playbackState.likeCustomAction()?.let { action ->
+                controller.transportControls.sendCustomAction(action.action, action.extras)
+            }
         }
     }
 
@@ -767,8 +775,18 @@ private fun PlaybackState?.isPlayingState(): Boolean {
     }
 }
 
+private fun PlaybackState?.likeCustomAction(): PlaybackState.CustomAction? {
+    return this?.customActions.orEmpty().firstOrNull { action ->
+        val hay = "${action.action} ${action.name}".lowercase()
+        listOf("like", "unlike", "favourite", "favorite", "heart", "love", "thumb").any { token ->
+            hay.contains(token)
+        }
+    }
+}
+
 private fun PlaybackState?.supportsLike(): Boolean {
-    return ((this?.actions ?: 0L) and PlaybackState.ACTION_SET_RATING) != 0L
+    if (((this?.actions ?: 0L) and PlaybackState.ACTION_SET_RATING) != 0L) return true
+    return likeCustomAction() != null
 }
 
 private fun MediaMetadata?.extractUserRating(): Rating? {

@@ -1,6 +1,8 @@
 package vad.dashing.tbox.ui.launcher
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +35,7 @@ fun resolveActiveGearSlot(gearBoxMode: String, gearBoxCurrentGear: Int?): Char? 
 fun LauncherGearSelector(
     activeSlot: Char?,
     modifier: Modifier = Modifier,
+    onDClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier,
@@ -40,11 +44,23 @@ fun LauncherGearSelector(
     ) {
         GEAR_SLOTS.forEach { slot ->
             val active = activeSlot == slot
+            val dClickable = slot == 'D' && onDClick != null
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(
                         if (active) LauncherColors.GearActive else LauncherColors.LeftPanelCard
+                    )
+                    .then(
+                        if (dClickable) {
+                            Modifier.clickable(
+                                interactionSource = remember(slot) { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onDClick?.invoke() },
+                            )
+                        } else {
+                            Modifier
+                        },
                     )
                     .padding(horizontal = 14.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center,

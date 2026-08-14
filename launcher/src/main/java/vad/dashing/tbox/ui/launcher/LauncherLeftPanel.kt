@@ -28,11 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -65,6 +67,7 @@ fun LauncherLeftPanel(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val tboxConnected by tboxViewModel.tboxConnected.collectAsStateWithLifecycle()
     val gearBoxMode by canViewModel.gearBoxMode.collectAsStateWithLifecycle()
     val gearBoxCurrentGear by canViewModel.gearBoxCurrentGear.collectAsStateWithLifecycle()
@@ -78,8 +81,14 @@ fun LauncherLeftPanel(
     val tires by LauncherTireRepository.state.collectAsStateWithLifecycle()
     val motion = rememberLauncherVehicleMotion(tboxConnected, canViewModel)
 
+    val racing = LauncherEggRace.active
+    val raceLane = LauncherEggRace.playerLane
+    val raceCars = LauncherEggRace.cars
+    LauncherEggRaceTicker()
+    val carLaneShift = if (racing) eggRaceCarShiftDp(raceLane) else 0.dp
+
     val simulateEnabled = LauncherDevVehicleState.simulateEnabled
-    val effectiveSpeed = motion.speedKmh
+    val effectiveSpeed = if (racing) LauncherEggRace.speedKmh else motion.speedKmh
     val effectiveSteer = rememberLauncherVisualSteer(motion)
     val steerPreview = motion.steerPreviewActive
 
@@ -111,7 +120,7 @@ fun LauncherLeftPanel(
     // Simulation gear override (hidden settings tab) takes precedence over live gearbox.
     val activeGear = LauncherDevVehicleState.gearSlotOverride
         ?: resolveActiveGearSlot(gearBoxMode, gearBoxCurrentGear)
-    val inDriveGear = activeGear == 'D'
+    val inDriveGear = racing || activeGear == 'D'
     val fuelText = fuelPct?.toInt()?.let { "$it%" } ?: "—"
     val speedText = valueToString(effectiveSpeed, 0, default = "0")
     val voltageValue = voltage
@@ -142,11 +151,19 @@ fun LauncherLeftPanel(
     ) {
         if (roadVisible) {
             LauncherVirtualRoad(
-                speedKmh = effectiveSpeed,
+                speedKmh = if (racing) effectiveSpeed * 0.45f else effectiveSpeed,
                 steerAngleDeg = effectiveSteer,
-                adas = adas,
+                adas = if (racing) LauncherAdasState() else adas,
                 steerPreview = steerPreview,
                 inDriveGear = inDriveGear,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (racing) {
+            // Past the bumper: draw under the 3D so a dodge continues beside/behind the body.
+            LauncherEggRaceCarsLayer(
+                cars = raceCars,
+                minDepth = LauncherEggRace.PASS_UNDER_DEPTH,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -157,12 +174,18 @@ fun LauncherLeftPanel(
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (racing) {
+                LauncherEggRaceCloseBar()
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LauncherGearSelector(activeSlot = activeGear)
+                LauncherGearSelector(
+                    activeSlot = if (racing) 'D' else activeGear,
+                    onDClick = { LauncherEggRace.onDTapped() },
+                )
                 Column(
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -218,12 +241,14 @@ fun LauncherLeftPanel(
                     color = LauncherColors.LeftTextSecondary,
                     fontSize = 13.sp,
                 )
+            if (!racing) {
                 LauncherCruisePresetControl(
                     canViewModel = canViewModel,
                     adas = adas,
                 )
             }
-            if (!tboxConnected) {
+            }
+            if (!tboxConnected && !racing) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -241,8 +266,10 @@ fun LauncherLeftPanel(
                     )
                 }
             }
-            LauncherAdasStrip(canViewModel = canViewModel)
-            LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
+            if (!racing) {
+                LauncherAdasStrip(canViewModel = canViewModel)
+                LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
+            }
         }
 
         Box(
@@ -270,9 +297,14 @@ fun LauncherLeftPanel(
                     onWheelAnchorsChanged = { wheelAnchors = it },
                     onPdcRingsChanged = { pdcRings = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                    modifier = Modifier.fillMaxSize(),
+                    textureSurface = racing,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationX = with(density) { carLaneShift.toPx() }
+                        },
                 )
-                if (settingsProgress < 0.15f) {
+                if (settingsProgress < 0.15f && !racing) {
                     LauncherTireBadges(
                         state = effectiveTires,
                         // ADAS strip shows a small pressure-only pill next to the wheel.
@@ -302,16 +334,18 @@ fun LauncherLeftPanel(
                     )
                 }
             }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .combinedClickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onOpenVehicleSettings,
-                        onLongClick = onColorPickerOpen,
-                    ),
-            )
+            if (!racing) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onOpenVehicleSettings,
+                            onLongClick = onColorPickerOpen,
+                        ),
+                )
+            }
             if (colorPickerVisible) {
                 LauncherCarColorPicker(
                     selectedId = paintId,
@@ -327,7 +361,18 @@ fun LauncherLeftPanel(
             }
         }
 
-        LauncherMediaMiniPlayer()
+        if (racing) {
+            LauncherEggRaceControls()
+        } else {
+            LauncherMediaMiniPlayer()
+        }
+        }
+        if (racing) {
+            LauncherEggRaceCarsLayer(
+                cars = raceCars,
+                maxDepth = LauncherEggRace.PASS_UNDER_DEPTH,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }

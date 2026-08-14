@@ -72,6 +72,35 @@ fun LauncherVirtualRoad(
     }
 }
 
+@Composable
+fun LauncherEggRaceCarsLayer(
+    cars: List<LauncherEggRaceCar>,
+    modifier: Modifier = Modifier,
+    minDepth: Float = 0f,
+    maxDepth: Float = 1f,
+) {
+    val visible = cars.filter { it.depth >= minDepth && it.depth < maxDepth }
+    if (visible.isEmpty()) return
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val horizonY = h * 0.24f
+        val vanishX = w / 2f
+        fun halfWidthAt(t: Float): Float =
+            (w * 0.14f) * (1f - t).pow(1.25f) + (w * 1.10f) * t.pow(1.05f)
+        fun laneOffsetAt(t: Float): Float = halfWidthAt(t) * 0.30f
+        fun yAt(t: Float): Float = horizonY + (h - horizonY) * t
+        fun centerXAt(t: Float): Float = vanishX
+        drawRaceCars(
+            cars = visible,
+            centerXAt = ::centerXAt,
+            laneOffsetAt = ::laneOffsetAt,
+            halfWidthAt = ::halfWidthAt,
+            yAt = ::yAt,
+        )
+    }
+}
+
 private fun DrawScope.drawVirtualRoad(
     roadPhase: Float,
     speedKmh: Float,
@@ -335,6 +364,30 @@ private fun timeGapFallbackDistanceM(gapLevel: Int): Int = when (gapLevel.coerce
     else -> 40
 }
 
+private fun DrawScope.drawRaceCars(
+    cars: List<LauncherEggRaceCar>,
+    centerXAt: (Float) -> Float,
+    laneOffsetAt: (Float) -> Float,
+    halfWidthAt: (Float) -> Float,
+    yAt: (Float) -> Float,
+) {
+    cars.sortedBy { it.depth }.forEach { car ->
+        val t = car.depth.coerceIn(0.02f, 0.90f)
+        val cx = centerXAt(t) + car.lane * 2f * laneOffsetAt(t)
+        val cy = yAt(t)
+        val roadHalf = halfWidthAt(t)
+        val (objW, objH) = objectSizeForType(LauncherAdasFrontObjectType.Car, roadHalf)
+        val approach = (t / 0.48f).coerceIn(0f, 1f)
+        drawOncomingCarFront(
+            cx = cx,
+            cy = cy,
+            objW = objW * (1.22f + 0.62f * approach),
+            objH = objH * (1.18f + 0.52f * approach),
+            paintId = car.id,
+        )
+    }
+}
+
 private fun DrawScope.drawFrontObject(
     adas: LauncherAdasState,
     distanceM: Int,
@@ -381,6 +434,212 @@ private fun DrawScope.drawFrontObject(
         cx,
         cy - objH * 1.35f - 4f,
         paint,
+    )
+}
+
+private val OncomingCarPaints = arrayOf(
+    Color(0xFFF4F6F8),
+    Color(0xFF232830),
+    Color(0xFF4E6D98),
+    Color(0xFFB4453C),
+    Color(0xFFC5CAD0),
+    Color(0xFF2E4A3F),
+)
+
+/** Oncoming modern crossover, front view: slim DRL bar, closed fascia, windshield. */
+private fun DrawScope.drawOncomingCarFront(
+    cx: Float,
+    cy: Float,
+    objW: Float,
+    objH: Float,
+    paintId: Int,
+) {
+    val w = objW
+    val h = objH
+    val paint = OncomingCarPaints[kotlin.math.abs(paintId) % OncomingCarPaints.size]
+    val darkBody = (paint.red + paint.green + paint.blue) / 3f < 0.42f
+    val bodyHi = if (darkBody) {
+        Color(
+            (paint.red + 0.16f).coerceAtMost(1f),
+            (paint.green + 0.16f).coerceAtMost(1f),
+            (paint.blue + 0.18f).coerceAtMost(1f),
+        )
+    } else {
+        Color.White
+    }
+    val bodyLo = Color(
+        paint.red * 0.62f,
+        paint.green * 0.64f,
+        paint.blue * 0.68f,
+    )
+    val roofY = cy - h * 0.98f
+    val glassBottom = cy - h * 0.50f
+    val lampY = cy - h * 0.34f
+    val bumperY = cy - h * 0.16f
+    val roofW = w * 0.54f
+    val shoulderW = w * 0.90f
+
+    drawOval(
+        color = Color.Black.copy(alpha = 0.38f),
+        topLeft = Offset(cx - w * 0.56f, cy - h * 0.05f),
+        size = Size(w * 1.12f, h * 0.16f),
+    )
+
+    val wheelW = w * 0.17f
+    val wheelH = h * 0.13f
+    listOf(-1f, 1f).forEach { side ->
+        val wx = cx + side * w * 0.40f - wheelW / 2f
+        val wy = cy - wheelH * 0.42f
+        drawOval(Color(0xFF14161A), Offset(wx, wy), Size(wheelW, wheelH))
+        drawOval(
+            Color(0xFF8B919A),
+            Offset(wx + wheelW * 0.22f, wy + wheelH * 0.22f),
+            Size(wheelW * 0.56f, wheelH * 0.56f),
+        )
+        drawOval(
+            Color(0xFF2A2E34),
+            Offset(wx + wheelW * 0.34f, wy + wheelH * 0.34f),
+            Size(wheelW * 0.32f, wheelH * 0.32f),
+        )
+    }
+
+    val body = Path().apply {
+        moveTo(cx - roofW / 2f, roofY + h * 0.10f)
+        quadraticTo(cx, roofY - h * 0.01f, cx + roofW / 2f, roofY + h * 0.10f)
+        lineTo(cx + shoulderW / 2f, glassBottom)
+        lineTo(cx + w * 0.50f, bumperY)
+        quadraticTo(cx + w * 0.50f, cy + h * 0.01f, cx + w * 0.34f, cy - h * 0.015f)
+        lineTo(cx - w * 0.34f, cy - h * 0.015f)
+        quadraticTo(cx - w * 0.50f, cy + h * 0.01f, cx - w * 0.50f, bumperY)
+        lineTo(cx - shoulderW / 2f, glassBottom)
+        close()
+    }
+    drawPath(
+        path = body,
+        brush = Brush.verticalGradient(
+            0f to bodyHi,
+            0.42f to paint,
+            1f to bodyLo,
+            startY = roofY,
+            endY = cy,
+        ),
+    )
+
+    val glass = Path().apply {
+        moveTo(cx - roofW * 0.40f, roofY + h * 0.16f)
+        lineTo(cx + roofW * 0.40f, roofY + h * 0.16f)
+        lineTo(cx + shoulderW * 0.36f, glassBottom - h * 0.03f)
+        lineTo(cx - shoulderW * 0.36f, glassBottom - h * 0.03f)
+        close()
+    }
+    drawPath(
+        path = glass,
+        brush = Brush.verticalGradient(
+            0f to Color(0xFF9EB4C8),
+            0.35f to Color(0xFF3A4654),
+            1f to Color(0xFF1A222C),
+            startY = roofY,
+            endY = glassBottom,
+        ),
+    )
+    drawPath(
+        path = Path().apply {
+            moveTo(cx - roofW * 0.18f, roofY + h * 0.18f)
+            lineTo(cx + roofW * 0.08f, roofY + h * 0.18f)
+            lineTo(cx - roofW * 0.06f, glassBottom - h * 0.10f)
+            lineTo(cx - shoulderW * 0.28f, glassBottom - h * 0.08f)
+            close()
+        },
+        color = Color.White.copy(alpha = 0.14f),
+    )
+
+    val mirrorW = w * 0.11f
+    val mirrorH = h * 0.07f
+    val mirrorY = glassBottom - h * 0.09f
+    listOf(-1f, 1f).forEach { side ->
+        drawRoundRect(
+            color = paint,
+            topLeft = Offset(cx + side * (shoulderW / 2f + w * 0.01f) - if (side < 0) mirrorW else 0f, mirrorY),
+            size = Size(mirrorW, mirrorH),
+            cornerRadius = CornerRadius(mirrorH * 0.45f, mirrorH * 0.45f),
+        )
+        drawRoundRect(
+            color = Color(0xFF2A313A),
+            topLeft = Offset(
+                cx + side * (shoulderW / 2f + w * 0.015f) - if (side < 0) mirrorW * 0.72f else mirrorW * 0.08f,
+                mirrorY + mirrorH * 0.18f,
+            ),
+            size = Size(mirrorW * 0.64f, mirrorH * 0.58f),
+            cornerRadius = CornerRadius(mirrorH * 0.25f, mirrorH * 0.25f),
+        )
+    }
+
+    val barW = w * 0.78f
+    val barH = h * 0.045f
+    val barLeft = cx - barW / 2f
+    val barTop = lampY - barH / 2f
+    drawRoundRect(
+        color = Color(0xFFD9F0FF).copy(alpha = 0.35f),
+        topLeft = Offset(barLeft - w * 0.03f, barTop - h * 0.02f),
+        size = Size(barW + w * 0.06f, barH + h * 0.04f),
+        cornerRadius = CornerRadius(barH, barH),
+    )
+    drawRoundRect(
+        color = Color(0xFFEAF6FF),
+        topLeft = Offset(barLeft, barTop),
+        size = Size(barW, barH),
+        cornerRadius = CornerRadius(barH, barH),
+    )
+    val lampW = w * 0.20f
+    val lampH = h * 0.09f
+    listOf(-1f, 1f).forEach { side ->
+        val lx = cx + side * w * 0.32f - lampW / 2f
+        drawRoundRect(
+            color = Color(0xFFB8DFFF).copy(alpha = 0.55f),
+            topLeft = Offset(lx - w * 0.01f, lampY - lampH * 0.62f),
+            size = Size(lampW + w * 0.02f, lampH * 1.15f),
+            cornerRadius = CornerRadius(lampH * 0.5f, lampH * 0.5f),
+        )
+        drawRoundRect(
+            brush = Brush.horizontalGradient(
+                0f to Color(0xFFF8FCFF),
+                1f to Color(0xFF7EC8F5),
+            ),
+            topLeft = Offset(lx, lampY - lampH * 0.48f),
+            size = Size(lampW, lampH),
+            cornerRadius = CornerRadius(lampH * 0.48f, lampH * 0.48f),
+        )
+    }
+
+    val intakeW = w * 0.58f
+    val intakeH = h * 0.09f
+    drawRoundRect(
+        color = Color(0xFF14181D),
+        topLeft = Offset(cx - intakeW / 2f, bumperY - intakeH * 0.15f),
+        size = Size(intakeW, intakeH),
+        cornerRadius = CornerRadius(intakeH * 0.35f, intakeH * 0.35f),
+    )
+    drawRoundRect(
+        color = Color(0xFF2A3038),
+        topLeft = Offset(cx - intakeW * 0.42f, bumperY + intakeH * 0.12f),
+        size = Size(intakeW * 0.84f, intakeH * 0.38f),
+        cornerRadius = CornerRadius(intakeH * 0.12f, intakeH * 0.12f),
+    )
+
+    val plateW = w * 0.28f
+    val plateH = h * 0.07f
+    drawRoundRect(
+        color = Color(0xFFE7E7E2),
+        topLeft = Offset(cx - plateW / 2f, bumperY + intakeH * 0.22f),
+        size = Size(plateW, plateH),
+        cornerRadius = CornerRadius(plateH * 0.12f, plateH * 0.12f),
+    )
+    drawRoundRect(
+        color = Color(0xFF3A4048),
+        topLeft = Offset(cx - plateW / 2f, bumperY + intakeH * 0.22f),
+        size = Size(plateW, plateH),
+        cornerRadius = CornerRadius(plateH * 0.12f, plateH * 0.12f),
+        style = Stroke(width = 1.2f),
     )
 }
 

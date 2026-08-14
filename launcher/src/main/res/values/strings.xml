@@ -14,6 +14,8 @@
     <string name="action_replace">Заменить</string>
     <string name="action_clear">Очистить</string>
     <string name="action_close">Закрыть</string>
+    <string name="launcher_egg_race_score">%1$d</string>
+    <string name="launcher_egg_race_steer">Полоса</string>
     <string name="action_configure">Настроить</string>
     <string name="action_send">Отправить</string>
     <string name="action_get_all_sms">Получить все SMS</string>
