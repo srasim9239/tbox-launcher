@@ -131,6 +131,11 @@
     <string name="launcher_adas_pas_off">Парктроник выкл.</string>
     <string name="launcher_adas_cruise">Круиз %1$s</string>
     <string name="launcher_adas_acc_standby">ACC</string>
+    <string name="launcher_cruise_presets">Пресеты круиза</string>
+    <string name="launcher_cruise_presets_title">Пресеты круиза</string>
+    <string name="launcher_cruise_presets_desc">Скорости для быстрого выбора на главном экране</string>
+    <string name="launcher_cruise_preset_n">Пресет %1$d</string>
+    <string name="launcher_cruise_preset_value">%1$d км/ч</string>
     <string name="launcher_adas_time_gap">Инт. %1$d</string>
     <string name="launcher_adas_time_gap_label">Дист.</string>
     <string name="launcher_adas_tsr_chip">TSR %1$d</string>

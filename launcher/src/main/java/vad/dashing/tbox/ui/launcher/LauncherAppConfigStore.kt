@@ -17,6 +17,11 @@ private const val KEY_FULLSCREEN = "fullscreen_packages"
 internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
 internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
 internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
+internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
+internal const val CRUISE_PRESET_MIN_KMH = 30
+internal const val CRUISE_PRESET_MAX_KMH = 160
+internal const val CRUISE_PRESET_STEP_KMH = 5
+private const val KEY_CRUISE_PRESETS = "cruise_presets_kmh"
 internal const val GRID_SLOT_COUNT = 9
 private const val DOCK_SLOT_COUNT = 4
 
@@ -31,6 +36,8 @@ internal object LauncherAppConfigStore {
 
     private val mediaCardAlphaRevision = MutableStateFlow(0)
     internal val mediaCardAlphaRevisionFlow: StateFlow<Int> = mediaCardAlphaRevision
+    private val cruisePresetsRevision = MutableStateFlow(0)
+    internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -59,6 +66,25 @@ internal object LauncherAppConfigStore {
         val next = alpha.coerceIn(MEDIA_CARD_ALPHA_MIN, MEDIA_CARD_ALPHA_MAX)
         prefs(context).edit().putFloat(KEY_MEDIA_CARD_ALPHA, next).apply()
         mediaCardAlphaRevision.value++
+    }
+
+    fun cruisePresetsKmh(context: Context): List<Int> {
+        val parsed = prefs(context).getString(KEY_CRUISE_PRESETS, null)
+            ?.split(',')
+            ?.mapNotNull { it.trim().toIntOrNull()?.coerceIn(CRUISE_PRESET_MIN_KMH, CRUISE_PRESET_MAX_KMH) }
+        return if (parsed != null && parsed.size == CRUISE_PRESET_DEFAULTS_KMH.size) {
+            parsed
+        } else {
+            CRUISE_PRESET_DEFAULTS_KMH
+        }
+    }
+
+    fun setCruisePresetKmh(context: Context, index: Int, kmh: Int) {
+        val next = cruisePresetsKmh(context).toMutableList()
+        if (index !in next.indices) return
+        next[index] = kmh.coerceIn(CRUISE_PRESET_MIN_KMH, CRUISE_PRESET_MAX_KMH)
+        prefs(context).edit().putString(KEY_CRUISE_PRESETS, next.joinToString(",")).apply()
+        cruisePresetsRevision.value++
     }
 
     fun isFullscreenLaunch(context: Context, packageName: String): Boolean =

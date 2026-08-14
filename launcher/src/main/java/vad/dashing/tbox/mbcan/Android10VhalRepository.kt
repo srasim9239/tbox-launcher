@@ -1260,6 +1260,11 @@ object Android10VhalRepository {
         )
     }
 
+    /** Direct VHAL write, bypassing the mbCAN command registry. */
+    internal fun trySetIntProperty(propertyId: Int, value: Int): Boolean {
+        return bridge?.setIntProperty(propertyId, value) == true
+    }
+
     suspend fun execute(command: MbCanCommand): MbCanCommandResult {
         permissionDeniedReasonOrNull()?.let { deniedReason ->
             return MbCanCommandResult(false, deniedReason)

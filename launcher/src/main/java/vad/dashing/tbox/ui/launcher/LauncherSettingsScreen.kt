@@ -157,6 +157,7 @@ fun LauncherSettingsScreen(
         )
 
         MediaCardOpacitySlider()
+        CruisePresetsSettings()
 
         Box(
             modifier = Modifier
@@ -457,6 +458,76 @@ private fun MediaCardOpacitySlider() {
                 LauncherAppConfigStore.setMediaCardAlpha(context, next)
             },
             valueRange = MEDIA_CARD_ALPHA_MIN..MEDIA_CARD_ALPHA_MAX,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun CruisePresetsSettings() {
+    val context = LocalContext.current
+    val revision by LauncherAppConfigStore.cruisePresetsRevisionFlow.collectAsStateWithLifecycle()
+    val presets = remember(context, revision) {
+        LauncherAppConfigStore.cruisePresetsKmh(context)
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.launcher_cruise_presets_title),
+            style = MaterialTheme.typography.tboxBody,
+            color = LauncherColors.TextPrimary,
+        )
+        Text(
+            text = stringResource(R.string.launcher_cruise_presets_desc),
+            style = MaterialTheme.typography.tboxBody,
+            color = LauncherColors.TextMuted,
+        )
+        presets.forEachIndexed { index, kmh ->
+            CruisePresetSliderRow(
+                index = index,
+                kmh = kmh,
+                onChange = { next ->
+                    LauncherAppConfigStore.setCruisePresetKmh(context, index, next)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CruisePresetSliderRow(
+    index: Int,
+    kmh: Int,
+    onChange: (Int) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_cruise_preset_n, index + 1),
+                style = MaterialTheme.typography.tboxBody,
+                color = LauncherColors.TextPrimary,
+            )
+            Text(
+                text = stringResource(R.string.launcher_cruise_preset_value, kmh),
+                style = MaterialTheme.typography.tboxBody,
+                color = LauncherColors.TextSecondary,
+            )
+        }
+        Slider(
+            value = kmh.toFloat(),
+            onValueChange = { raw ->
+                val snapped = (raw / CRUISE_PRESET_STEP_KMH).roundToInt() * CRUISE_PRESET_STEP_KMH
+                onChange(snapped.coerceIn(CRUISE_PRESET_MIN_KMH, CRUISE_PRESET_MAX_KMH))
+            },
+            valueRange = CRUISE_PRESET_MIN_KMH.toFloat()..CRUISE_PRESET_MAX_KMH.toFloat(),
+            steps = ((CRUISE_PRESET_MAX_KMH - CRUISE_PRESET_MIN_KMH) / CRUISE_PRESET_STEP_KMH) - 1,
             colors = SliderDefaults.colors(
                 thumbColor = LauncherColors.AccentCyan,
                 activeTrackColor = LauncherColors.AccentCyan,

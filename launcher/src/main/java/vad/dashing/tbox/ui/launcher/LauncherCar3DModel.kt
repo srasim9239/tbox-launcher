@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -8,9 +9,11 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -22,6 +25,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.SceneView
 import io.github.sceneview.SurfaceType
@@ -108,6 +117,7 @@ fun LauncherCar3DModel(
         }
         LauncherCarFilamentModel(
             modifier = Modifier.fillMaxSize(),
+            modelRevision = modelRevision,
             paintId = paintId,
             rigState = rigState,
             speedKmh = speedKmh,
@@ -136,6 +146,7 @@ fun LauncherCar3DModel(
 @Composable
 private fun LauncherCarFilamentModel(
     modifier: Modifier = Modifier,
+    modelRevision: Int,
     paintId: String,
     rigState: LauncherCarRigState,
     speedKmh: Float,
@@ -169,7 +180,9 @@ private fun LauncherCarFilamentModel(
     val rigAvailabilityCallbackRef = rememberUpdatedState(onBodyRigAvailabilityChanged)
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
-    var driveBlend by remember { mutableFloatStateOf(0f) }
+    var driveBlend by remember {
+        mutableFloatStateOf(if (inDriveGear || steerPreview) 1f else 0f)
+    }
     var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
     var renderedScale by remember(modelInstance) { mutableFloatStateOf(0f) }
     var modelReady by remember(modelInstance) { mutableStateOf(false) }
@@ -186,6 +199,38 @@ private fun LauncherCarFilamentModel(
     }
     val animationController = remember(modelInstance) {
         modelInstance?.let(LauncherCarAnimationController::bind)
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val surfaceEpoch by LauncherCarSurfaceRecovery.epoch.collectAsStateWithLifecycle()
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> LauncherCarSurfaceRecovery.onHomePaused()
+                Lifecycle.Event.ON_RESUME -> LauncherCarSurfaceRecovery.onHomeResumed()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(surfaceEpoch) {
+        lastFrameNs = 0L
+        val startedAt = SystemClock.elapsedRealtime()
+        while (isActive) {
+            delay(800)
+            val resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            if (!resumed) continue
+            val last = lastFrameNs
+            if (last == 0L) {
+                if (SystemClock.elapsedRealtime() - startedAt > 4_000L) {
+                    LauncherCarSurfaceRecovery.onFramesStalled()
+                }
+            } else if (System.nanoTime() - last > 1_500_000_000L) {
+                LauncherCarSurfaceRecovery.onFramesStalled()
+            }
+        }
     }
 
     // SceneView otherwise renders one frame with its default camera before onFrame runs.
@@ -238,6 +283,7 @@ private fun LauncherCarFilamentModel(
 
     Box(modifier = modifier) {
         if (modelInstance != null) {
+            key(surfaceEpoch, modelRevision) {
             SceneView(
                 modifier = Modifier
                     .fillMaxSize()
@@ -326,6 +372,7 @@ private fun LauncherCarFilamentModel(
                             modelReady = true
                         }
                     } else {
+                        if (!node.isVisible) node.isVisible = true
                         val scaleResponse = 1f - kotlin.math.exp(-dt * 8f)
                         renderedScale += (targetScale - renderedScale) * scaleResponse
                         node.scale = Scale(renderedScale)
@@ -392,10 +439,11 @@ private fun LauncherCarFilamentModel(
                         ),
                     ),
                     apply = {
-                        isVisible = false
+                        isVisible = modelReady
                         modelNodeRef.value = this
                     },
                 )
+            }
             }
         }
     }

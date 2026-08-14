@@ -47,15 +47,21 @@ class LauncherNavAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !LauncherNavRepository.enabled) return
+        if (event == null) return
         try {
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 val pkg = event.packageName?.toString().orEmpty()
+                if (pkg.isNotEmpty()) {
+                    LauncherCarSurfaceRecovery.onWindowPackage(pkg)
+                }
+                if (!LauncherNavRepository.enabled) return
                 if (pkg.isNotEmpty() && pkg != NaviNotificationParser.YANDEX_NAVI_PACKAGE) {
                     LauncherNavRepository.clearIfSource(LauncherNavSource.YandexAccessibility)
                 }
                 return
             }
+
+            if (!LauncherNavRepository.enabled) return
 
             val nodeInfo = event.source ?: return
             try {

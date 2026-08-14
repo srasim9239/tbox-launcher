@@ -106,15 +106,16 @@ private fun DrawScope.drawVirtualRoad(
         yAt = ::yAt,
     )
 
-    val dashSpacing = (32f + speedKmh * 0.28f).coerceIn(20f, 72f)
+    val dashSpacing = (58f + speedKmh * 0.42f).coerceIn(48f, 128f)
     val phase = roadPhase % dashSpacing
     var y = horizonY + phase
     while (y < h) {
         val t = ((y - horizonY) / (h - horizonY)).coerceIn(0f, 1f)
-        val dashLen = (10f + t * 18f).coerceAtLeast(7f)
+        val dashLen = (22f + t * 40f).coerceAtLeast(16f)
         val nextT = (((y + dashLen) - horizonY) / (h - horizonY)).coerceIn(0f, 1f)
-        // Markings fade into the haze with distance instead of staying flat.
-        val fade = distanceFade(t)
+        // Stronger in the mid-road, dissolving into the horizon haze and
+        // fading out again at the bottom edge (under the player).
+        val fade = distanceFade(t) * bottomEdgeFade(t)
         // Ego lane borders plus the two neighbouring lanes, as on a real HMI.
         listOf(
             -1f to 1f,
@@ -125,14 +126,16 @@ private fun DrawScope.drawVirtualRoad(
             val x1 = centerXAt(t) + side * laneOffsetAt(t)
             val x2 = centerXAt(nextT) + side * laneOffsetAt(nextT)
             if (x1 < -w * 0.7f || x1 > w * 1.7f) return@forEach
+            val alpha = 0.50f * fade * weight
+            if (alpha < 0.02f) return@forEach
             drawLine(
-                color = Color.White.copy(alpha = 0.50f * fade * weight),
+                color = Color.White.copy(alpha = alpha),
                 start = Offset(x1, y),
                 end = Offset(x2, y + dashLen),
                 strokeWidth = 1.6f + 1.6f * t,
             )
         }
-        y += dashSpacing * (0.4f + 0.6f * t)
+        y += dashSpacing * (0.55f + 0.85f * t)
     }
 
     drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
@@ -197,6 +200,14 @@ private fun DrawScope.drawVirtualRoad(
  * dissolving into the haze towards the horizon.
  */
 private fun distanceFade(t: Float): Float = (t.coerceIn(0f, 1f)).pow(0.62f)
+
+/** Dissolve lane dashes in the last third so they do not hit the panel edge. */
+private fun bottomEdgeFade(t: Float): Float {
+    val start = 0.62f
+    if (t <= start) return 1f
+    val u = ((t - start) / (1f - start)).coerceIn(0f, 1f)
+    return (1f - u).pow(1.45f)
+}
 
 /** Asphalt wedge from the horizon down to ego, dark and fading out with distance. */
 private fun DrawScope.drawRoadSurface(

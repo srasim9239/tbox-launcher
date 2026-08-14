@@ -229,6 +229,15 @@ object MbCanKnownVehiclePropertyId {
     const val HEADLIGHTS_SWITCH = 19
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_PROPERTY_ACC_AUTOBRAKE_SW] — 1 off, 2 on. */
     const val ACC_AUTOBRAKE_SW = 20
+    /**
+     * Steering-wheel cruise / ACC keys. OEM [HardKeyService] pulses value 1
+     * (`eVEHICLE_MFS_CRUISE_CONTROL` = SET/on).
+     */
+    const val MFS_CRUISE_CONTROL = 210
+    const val MFS_SPEED_LIMIT = 211
+    const val MFS_CANCEL = 212
+    const val MFS_RES_PLUS = 213
+    const val MFS_SET_MINUS = 214
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eFCW_SWTICH] — 1 off, 2 on. */
     const val FCW_SWITCH = 96
     /** [com.mengbo.mbCan.defines.MBVehicleProperty.eVEHICLE_HDC_SWITCH] — 1 off, 2 on. */

@@ -45,6 +45,11 @@
     <string name="launcher_nav_alert_works">Roadworks</string>
     <string name="launcher_nav_alert_other">Event</string>
     <string name="launcher_adas_time_gap_label">Gap</string>
+    <string name="launcher_cruise_presets">Cruise presets</string>
+    <string name="launcher_cruise_presets_title">Cruise presets</string>
+    <string name="launcher_cruise_presets_desc">Speeds for one-tap selection on the home screen</string>
+    <string name="launcher_cruise_preset_n">Preset %1$d</string>
+    <string name="launcher_cruise_preset_value">%1$d km/h</string>
     <string name="launcher_adas_tsr_chip">TSR %1$d</string>
     <string name="launcher_adas_bsd_left">BSD ←</string>
     <string name="launcher_adas_bsd_right">BSD →</string>

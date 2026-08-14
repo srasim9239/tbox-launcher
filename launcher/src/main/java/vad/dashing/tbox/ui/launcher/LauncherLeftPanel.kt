@@ -207,12 +207,22 @@ fun LauncherLeftPanel(
                     }
                 }
             }
-            Text(
-                text = "$speedText ${stringResource(R.string.unit_kmh)}",
-                style = MaterialTheme.typography.tboxCaption,
-                color = LauncherColors.LeftTextSecondary,
-                fontSize = 13.sp,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "$speedText ${stringResource(R.string.unit_kmh)}",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.LeftTextSecondary,
+                    fontSize = 13.sp,
+                )
+                LauncherCruisePresetControl(
+                    canViewModel = canViewModel,
+                    adas = adas,
+                )
+            }
             if (!tboxConnected) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

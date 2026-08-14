@@ -337,8 +337,8 @@ fun LauncherMediaMiniPlayer(
                         context = context,
                         selectedPackages = monitorPackages,
                         preferredPackage = activePkg,
-                        keepPlayerForeground = true,
-                        launchAppIfNeeded = true,
+                        keepPlayerForeground = false,
+                        launchAppIfNeeded = false,
                     )
                 },
             )

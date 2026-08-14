@@ -327,10 +327,14 @@ object SharedMediaControlService {
             selectedPackages = selectedPackages,
             preferredPackage = preferredPackage
         ) ?: return
-        sendMediaPlayKeyEvent(context.applicationContext, targetPackage)
-        if (!launchAppIfNeeded) return
+        val appContext = context.applicationContext
+        sendMediaPlayKeyEvent(appContext, targetPackage)
+        if (!launchAppIfNeeded) {
+            scheduleLateSessionPlayRetryIfNeeded(appContext, targetPackage)
+            return
+        }
         launchPlayerApp(
-            context.applicationContext,
+            appContext,
             targetPackage,
             scheduleColdStartPlayRetry = true,
             keepPlayerForeground = keepPlayerForeground,
@@ -858,16 +862,28 @@ private fun hasNotificationListenerAccess(
 
 private fun sendMediaPlayKeyEvent(context: Context, packageName: String) {
     try {
-        val keyDown = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
-            setPackage(packageName)
-            putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+        val down = KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY)
+        val up = KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY)
+        fun broadcast(component: ComponentName?) {
+            val keyDown = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+                if (component != null) setComponent(component) else setPackage(packageName)
+                putExtra(Intent.EXTRA_KEY_EVENT, down)
+            }
+            val keyUp = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+                if (component != null) setComponent(component) else setPackage(packageName)
+                putExtra(Intent.EXTRA_KEY_EVENT, up)
+            }
+            context.sendOrderedBroadcast(keyDown, null)
+            context.sendOrderedBroadcast(keyUp, null)
         }
-        val keyUp = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
-            setPackage(packageName)
-            putExtra(Intent.EXTRA_KEY_EVENT, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+        broadcast(null)
+        runCatching {
+            val query = Intent(Intent.ACTION_MEDIA_BUTTON).setPackage(packageName)
+            context.packageManager.queryBroadcastReceivers(query, 0).forEach { info ->
+                val ri = info.activityInfo ?: return@forEach
+                broadcast(ComponentName(ri.packageName, ri.name))
+            }
         }
-        context.sendOrderedBroadcast(keyDown, null)
-        context.sendOrderedBroadcast(keyUp, null)
     } catch (e: Exception) {
         TboxRepository.addLog("ERROR", "MediaControl", "Media play key broadcast failed: ${e.message}")
     }
