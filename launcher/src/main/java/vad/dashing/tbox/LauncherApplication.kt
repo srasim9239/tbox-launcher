@@ -5,10 +5,8 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.UniversalCanRepository
-import vad.dashing.tbox.ui.launcher.LauncherNavRepository
 
 /**
  * Standalone HOME launcher process — no TBox UDP / trips / fuel pipeline.
@@ -25,9 +23,6 @@ class LauncherApplication : Application() {
                 UniversalCanRepository.autoResolveModeOnStartup(settings, appScope)
             }.onFailure {
                 Log.w(TAG, "CAN auto-bind failed", it)
-            }
-            runCatching {
-                LauncherNavRepository.setEnabled(settings.launcherNavHintsEnabledFlow.first())
             }
         }
     }

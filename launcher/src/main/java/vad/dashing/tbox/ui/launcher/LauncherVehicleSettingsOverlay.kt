@@ -30,10 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
-import vad.dashing.tbox.SettingsManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -606,7 +603,6 @@ internal fun LauncherVehicleSettingsContent(
                     "${it} km/h",
                 )
             }
-            LauncherNavHintsSettingsBlock()
         }
 
         LauncherVehicleSectionCard(
@@ -673,6 +669,16 @@ internal fun LauncherVehicleSettingsContent(
         }
 
         LauncherVehicleSectionCard(
+            title = stringResource(R.string.launcher_vs_section_launcher),
+            subtitle = stringResource(R.string.launcher_vs_section_launcher_sub),
+            icon = VehicleSettingsSectionIcons.Launcher,
+            expanded = expandedSection == VehicleSettingsSection.Launcher,
+            onToggle = { onSectionToggle(VehicleSettingsSection.Launcher) },
+        ) {
+            LauncherHomeSettingsContent()
+        }
+
+        LauncherVehicleSectionCard(
             title = stringResource(R.string.launcher_vs_section_system),
             subtitle = stringResource(R.string.launcher_vs_section_system_sub),
             icon = VehicleSettingsSectionIcons.System,
@@ -691,11 +697,6 @@ internal fun LauncherVehicleSettingsContent(
                     (systemSettings.bluetoothName?.let { " · $it" } ?: ""),
                 active = systemSettings.bluetoothEnabled,
                 onClick = { systemSettings.applyBluetoothEnabled(!systemSettings.bluetoothEnabled) },
-            )
-            LauncherSettingsToggleRow(
-                label = stringResource(R.string.launcher_vs_dark_theme),
-                active = LauncherThemeState.darkTheme,
-                onClick = { LauncherThemeState.setDarkTheme(context, !LauncherThemeState.darkTheme) },
             )
             Row(
                 modifier = Modifier
@@ -973,119 +974,4 @@ private fun LauncherHeadlightsModeSelector(
             }
         }
     }
-}
-
-@Composable
-private fun LauncherNavHintsSettingsBlock() {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val settingsManager = remember(context) { SettingsManager(context.applicationContext) }
-    val enabled by settingsManager.launcherNavHintsEnabledFlow.collectAsStateWithLifecycle(false)
-    var permissionTick by remember { mutableStateOf(0) }
-    androidx.compose.runtime.DisposableEffect(context) {
-        val resolver = context.contentResolver
-        val handler = android.os.Handler(android.os.Looper.getMainLooper())
-        val observer = object : android.database.ContentObserver(handler) {
-            override fun onChange(selfChange: Boolean) {
-                permissionTick++
-            }
-        }
-        resolver.registerContentObserver(
-            android.provider.Settings.Secure.getUriFor("enabled_notification_listeners"),
-            false,
-            observer,
-        )
-        resolver.registerContentObserver(
-            android.provider.Settings.Secure.getUriFor(
-                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-            ),
-            false,
-            observer,
-        )
-        onDispose { resolver.unregisterContentObserver(observer) }
-    }
-    val listenerComponent = remember {
-        android.content.ComponentName(
-            context,
-            vad.dashing.tbox.MediaControlNotificationListenerService::class.java,
-        )
-    }
-    val a11yComponentFlat = remember {
-        android.content.ComponentName(context, LauncherNavAccessibilityService::class.java)
-            .flattenToString()
-    }
-    val listenerOk = remember(permissionTick) {
-        isNotificationListenerEnabled(context, listenerComponent)
-    }
-    val a11yOk = remember(permissionTick) {
-        isAccessibilityServiceEnabled(context, a11yComponentFlat)
-    }
-
-    LauncherSettingsToggleRow(
-        label = stringResource(R.string.launcher_nav_hints),
-        active = enabled,
-        onClick = {
-            scope.launch {
-                settingsManager.saveLauncherNavHintsEnabled(!enabled)
-                LauncherNavRepository.setEnabled(!enabled)
-            }
-        },
-    )
-    Text(
-        text = stringResource(R.string.launcher_nav_hints_sub),
-        color = LauncherColors.TextMuted,
-        fontSize = 12.sp,
-        modifier = Modifier.padding(bottom = 4.dp),
-    )
-    if (enabled) {
-        LauncherSettingsToggleRow(
-            label = if (listenerOk) {
-                stringResource(R.string.launcher_nav_notifications_ok)
-            } else {
-                stringResource(R.string.launcher_nav_grant_notifications)
-            },
-            active = listenerOk,
-            onClick = {
-                permissionTick++
-                openNotificationListenerSettings(context)
-            },
-        )
-        LauncherSettingsToggleRow(
-            label = if (a11yOk) {
-                stringResource(R.string.launcher_nav_accessibility_ok)
-            } else {
-                stringResource(R.string.launcher_nav_grant_accessibility)
-            },
-            active = a11yOk,
-            onClick = {
-                permissionTick++
-                openAccessibilitySettings(context)
-            },
-        )
-    }
-}
-
-private fun isAccessibilityServiceEnabled(
-    context: android.content.Context,
-    componentFlat: String,
-): Boolean {
-    val enabledServices = android.provider.Settings.Secure.getString(
-        context.contentResolver,
-        android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-    ).orEmpty()
-    return enabledServices.split(':').any { it.equals(componentFlat, ignoreCase = true) }
-}
-
-private fun openNotificationListenerSettings(context: android.content.Context) {
-    launchSystemSettingsInFreeform(
-        context,
-        android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
-    )
-}
-
-private fun openAccessibilitySettings(context: android.content.Context) {
-    launchSystemSettingsInFreeform(
-        context,
-        android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS),
-    )
 }

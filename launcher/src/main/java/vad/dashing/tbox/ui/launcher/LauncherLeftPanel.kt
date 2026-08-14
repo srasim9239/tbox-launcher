@@ -243,7 +243,6 @@ fun LauncherLeftPanel(
             }
             LauncherAdasStrip(canViewModel = canViewModel)
             LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
-            LauncherNavHintStrip(modifier = Modifier.fillMaxWidth())
         }
 
         Box(

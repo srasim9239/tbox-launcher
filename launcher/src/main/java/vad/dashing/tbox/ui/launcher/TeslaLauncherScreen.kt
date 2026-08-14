@@ -77,10 +77,6 @@ fun TeslaLauncherScreen(
         }
     }
 
-    val navHintsEnabled by settingsManager.launcherNavHintsEnabledFlow.collectAsStateWithLifecycle(false)
-    LaunchedEffect(navHintsEnabled) {
-        LauncherNavRepository.setEnabled(navHintsEnabled)
-    }
     LaunchedEffect(Unit) {
         while (true) {
             LauncherAdasRepository.ensureActive()

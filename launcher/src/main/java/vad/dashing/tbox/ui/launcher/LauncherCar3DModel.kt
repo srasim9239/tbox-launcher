@@ -225,7 +225,7 @@ private fun LauncherCarFilamentModel(
             val last = lastFrameNs
             if (last == 0L) {
                 if (SystemClock.elapsedRealtime() - startedAt > 4_000L) {
-                    LauncherCarSurfaceRecovery.onFramesStalled()
+                    LauncherCarSurfaceRecovery.onFramesStalled(neverStarted = true)
                 }
             } else if (System.nanoTime() - last > 1_500_000_000L) {
                 LauncherCarSurfaceRecovery.onFramesStalled()
@@ -307,6 +307,7 @@ private fun LauncherCarFilamentModel(
                         ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.05f)
                     }
                     lastFrameNs = frameNs
+                    LauncherCarSurfaceRecovery.onFrameObserved()
 
                     val transition = settingsProgress.coerceIn(0f, 1f)
                     val driveTarget = when {

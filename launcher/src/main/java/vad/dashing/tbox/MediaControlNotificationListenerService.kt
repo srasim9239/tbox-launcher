@@ -1,22 +1,18 @@
 package vad.dashing.tbox
 
 import android.service.notification.NotificationListenerService
-import android.service.notification.StatusBarNotification
-import vad.dashing.tbox.ui.launcher.LauncherNavNotificationBridge
+import android.util.Log
 
 /**
- * Shared notification listener:
- * - required for MediaSession / media controls binding
- * - optionally scrapes Yandex Navi / 2GIS turn-by-turn (YNarrows-style)
+ * Required for MediaSession / media controls binding on the home player.
  */
 class MediaControlNotificationListenerService : NotificationListenerService() {
-    override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (sbn == null) return
-        LauncherNavNotificationBridge.onNotificationPosted(applicationContext, sbn)
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        Log.w(TAG, "notification listener connected")
     }
 
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        if (sbn == null) return
-        LauncherNavNotificationBridge.onNotificationRemoved(sbn)
+    private companion object {
+        const val TAG = "LauncherMediaNls"
     }
 }

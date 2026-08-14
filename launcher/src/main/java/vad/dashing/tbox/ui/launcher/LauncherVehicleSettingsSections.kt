@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.PlayArrow
@@ -45,6 +46,7 @@ enum class VehicleSettingsSection {
     Cabin,
     Adas,
     Comfort,
+    Launcher,
     System,
     Experimental,
     Simulation,
@@ -123,6 +125,7 @@ object VehicleSettingsSectionIcons {
     val Cabin = Icons.Filled.Home
     val Adas = Icons.Filled.PlayArrow
     val Comfort = Icons.Filled.Settings
+    val Launcher = Icons.Filled.Menu
     val System = Icons.Filled.Settings
     val Experimental = Icons.Filled.Build
     val Simulation = Icons.Filled.Warning

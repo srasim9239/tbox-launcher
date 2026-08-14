@@ -41,7 +41,6 @@ class SettingsManager(private val context: Context) {
 
     companion object {
         const val LAUNCHER_APP_ICONS_DIR = "launcher_app_icons"
-        private val KEY_NAV_HINTS = booleanPreferencesKey("launcher_nav_hints_enabled")
         private val KEY_HEAD_UNIT_CAN = stringPreferencesKey("head_unit_can_mode")
         private val KEY_CAN_AUTO_BIND = booleanPreferencesKey("can_auto_bind_enabled")
         private val KEY_CAN_AUTO_BIND_LOCKED = booleanPreferencesKey("can_auto_bind_locked")
@@ -55,10 +54,6 @@ class SettingsManager(private val context: Context) {
 
     private val _iconRevision = MutableStateFlow(0)
     val launcherAppIconRevisionFlow: Flow<Int> = _iconRevision.asStateFlow()
-
-    val launcherNavHintsEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_NAV_HINTS] ?: false
-    }
 
     val headUnitCanModeFlow: Flow<HeadUnitCanMode> = context.settingsDataStore.data.map { prefs ->
         HeadUnitCanMode.fromStorageValue(prefs[KEY_HEAD_UNIT_CAN])
@@ -78,10 +73,6 @@ class SettingsManager(private val context: Context) {
 
     val updateCheckEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
         prefs[KEY_UPDATE_CHECK_ENABLED] ?: true
-    }
-
-    suspend fun saveLauncherNavHintsEnabled(enabled: Boolean) {
-        context.settingsDataStore.edit { it[KEY_NAV_HINTS] = enabled }
     }
 
     suspend fun saveHeadUnitCanMode(mode: HeadUnitCanMode) {

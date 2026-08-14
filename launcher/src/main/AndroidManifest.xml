@@ -100,7 +100,6 @@
         </intent>
         <package android:name="com.wt.launcher3" />
         <package android:name="ru.yandex.yandexnavi" />
-        <package android:name="ru.dublgis.dgismobile" />
         <package android:name="com.mengbo.acsettings" />
         <package android:name="com.mengbo.mbcanwidget" />
         <package android:name="vad.dashing.tbox" />

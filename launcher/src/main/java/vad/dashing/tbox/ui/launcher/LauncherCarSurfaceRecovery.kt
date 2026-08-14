@@ -28,7 +28,7 @@ internal object LauncherCarSurfaceRecovery {
     @Volatile
     private var coveredBy: String? = null
     @Volatile
-    private var paused = false
+    private var awaitFirstFrame = false
     @Volatile
     private var lastRecoverAtMs = 0L
 
@@ -55,24 +55,23 @@ internal object LauncherCarSurfaceRecovery {
     }
 
     fun onHomePaused() {
-        paused = true
+        awaitFirstFrame = true
     }
 
     fun onHomeResumed() {
-        val wasPaused = paused
-        paused = false
-        val cover = coveredBy
-        if (cover != null) coveredBy = null
-        if (wasPaused || cover != null) {
-            recover(
-                if (cover != null) "resume after $cover"
-                else "resume after pause",
-            )
-        }
+        awaitFirstFrame = true
+        val cover = coveredBy ?: return
+        coveredBy = null
+        recover("resume after $cover")
     }
 
-    fun onFramesStalled() {
-        recover("frames stalled")
+    fun onFrameObserved() {
+        awaitFirstFrame = false
+    }
+
+    fun onFramesStalled(neverStarted: Boolean = false) {
+        if (!neverStarted && awaitFirstFrame) return
+        recover(if (neverStarted) "frames never started" else "frames stalled")
     }
 
     private fun recover(reason: String) {
