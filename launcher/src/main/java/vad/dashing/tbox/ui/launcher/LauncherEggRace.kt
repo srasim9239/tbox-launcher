@@ -37,6 +37,7 @@ data class LauncherEggRaceCar(
     val id: Int,
     val lane: Int,
     val depth: Float,
+    val paintIndex: Int = 0,
     val scored: Boolean = false,
 )
 
@@ -76,6 +77,7 @@ internal object LauncherEggRace {
     private var spawnCooldown = 2.0f
     private var crashHoldSec = 0f
     private var lastSpawnLane = 0
+    private var lastPaintIndex = -1
 
     fun onDTapped() {
         if (active) return
@@ -100,6 +102,7 @@ internal object LauncherEggRace {
         spawnCooldown = 2.0f
         crashHoldSec = 0f
         lastSpawnLane = 0
+        lastPaintIndex = -1
     }
 
     fun stop() {
@@ -162,7 +165,15 @@ internal object LauncherEggRace {
         val avoidLast = free.filter { it != lastSpawnLane }
         val lane = (if (avoidLast.isNotEmpty()) avoidLast else free).random(Random.Default)
         lastSpawnLane = lane
-        cars = cars + LauncherEggRaceCar(id = nextCarId++, lane = lane, depth = 0.02f)
+        val paints = (0 until 6).filter { it != lastPaintIndex }.ifEmpty { listOf(0) }
+        val paintIndex = paints.random(Random.Default)
+        lastPaintIndex = paintIndex
+        cars = cars + LauncherEggRaceCar(
+            id = nextCarId++,
+            lane = lane,
+            depth = 0.02f,
+            paintIndex = paintIndex,
+        )
     }
 }
 

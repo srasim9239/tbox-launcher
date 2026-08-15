@@ -1248,15 +1248,15 @@ object Android10VhalRepository {
     }
 
     /** Reads door/trunk status from CEM / PLG VHAL properties. */
-    fun readVehicleBodyState(): VehicleBodyState? {
+    fun readVehicleBodyState(previous: VehicleBodyState = VehicleBodyState()): VehicleBodyState? {
         val b = bridge ?: return null
         return VehicleBodyState(
-            doorFlOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_DRIVER_DOOR_STS)),
-            doorFrOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_PASSENGER_DOOR_STS)),
-            doorRlOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_REAR_LEFT_DOOR_STS)),
-            doorRrOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_REAR_RIGHT_DOOR_STS)),
-            tailgateOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_TAILGATE_STS)),
-            hoodOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_HOOD_STS)),
+            doorFlOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_DRIVER_DOOR_STS), previous.doorFlOpen),
+            doorFrOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_PASSENGER_DOOR_STS), previous.doorFrOpen),
+            doorRlOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_REAR_LEFT_DOOR_STS), previous.doorRlOpen),
+            doorRrOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_REAR_RIGHT_DOOR_STS), previous.doorRrOpen),
+            tailgateOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_TAILGATE_STS), previous.tailgateOpen),
+            hoodOpen = decodeVhalDoorOpen(b.getIntProperty(VHAL_HOOD_STS), previous.hoodOpen),
         )
     }
 

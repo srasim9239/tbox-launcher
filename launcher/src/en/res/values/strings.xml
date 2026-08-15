@@ -37,6 +37,15 @@
     <string name="launcher_nav_accessibility_label">Dashing Club: Back button</string>
     <string name="launcher_nav_accessibility_desc">Required for the Back button in the launcher dock. Data stays on device.</string>
     <string name="launcher_adas_time_gap_label">Gap</string>
+    <string name="launcher_gps_no_fix">No GPS fix</string>
+    <string name="launcher_paint_green">Green</string>
+    <string name="launcher_adas_acc_standby">Cruise</string>
+    <string name="launcher_adas_fcw">Collision</string>
+    <string name="launcher_adas_aeb">Braking</string>
+    <string name="launcher_adas_lka">Lane keep</string>
+    <string name="launcher_adas_hma">Auto high beam</string>
+    <string name="launcher_adas_tja">Traffic assist</string>
+    <string name="launcher_adas_srr_fault">Blind spot</string>
     <string name="launcher_cruise_presets">Cruise presets</string>
     <string name="launcher_cruise_presets_title">Cruise presets</string>
     <string name="launcher_cruise_presets_desc">Speeds for one-tap selection on the home screen</string>

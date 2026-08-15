@@ -18,14 +18,20 @@ data class VehicleBodyState(
  * 1 = closed, 2 = open. 0/other values are invalid/unknown and must not raise
  * a warning, otherwise every closed door is shown as open.
  */
-internal fun decodeMbCanDoorByte(status: Byte): Boolean {
+internal fun decodeMbCanDoorByte(status: Byte, previousOpen: Boolean = false): Boolean {
     val v = status.toInt() and 0xFF
-    return v == 2
+    return when (v) {
+        2 -> true
+        1 -> false
+        else -> previousOpen
+    }
 }
 
-internal fun decodeMbCanTrunkByte(status: Byte): Boolean {
-    val v = status.toInt() and 0xFF
-    return v == 2
-}
+internal fun decodeMbCanTrunkByte(status: Byte, previousOpen: Boolean = false): Boolean =
+    decodeMbCanDoorByte(status, previousOpen)
 
-internal fun decodeVhalDoorOpen(raw: Int?): Boolean = raw == 2
+internal fun decodeVhalDoorOpen(raw: Int?, previousOpen: Boolean = false): Boolean = when (raw) {
+    2 -> true
+    1 -> false
+    else -> previousOpen
+}

@@ -152,7 +152,7 @@ class LauncherCarRigController private constructor(
 
     /**
      * Projects three ground-plane rings (0.2 / 0.37 / 0.54 m beyond the body contour)
-     * as dense screen-space polylines (72 samples, each with its screen angle around
+     * as dense screen-space polylines (90 samples, each with its screen angle around
      * the projected body center). Because the rings live in world space, the PDC band
      * tilts and rotates together with the 3D model in any camera (top, drive, morph).
      */
@@ -285,9 +285,9 @@ class LauncherCarRigController private constructor(
             LauncherPdcChannel.RearSideRight to thetaOf(rearBx, rearBz, -0.85f, rear = true),
         )
 
-        // 1° sampling: a 10°-wide zone still yields a smooth polyline. At the previous
-        // 5° step a narrow zone could capture a single point and vanish entirely.
-        val samples = 360
+        // 4° sampling (90 points): dense enough for a ~10° zone (2–3 points) without
+        // 1080 worldToScreen calls that stall Filament on the head unit.
+        val samples = 90
         val rings = ringOffsetsM.map { offsetM ->
             val offset = offsetM * worldPerMeter
             (0 until samples).mapNotNull { i ->

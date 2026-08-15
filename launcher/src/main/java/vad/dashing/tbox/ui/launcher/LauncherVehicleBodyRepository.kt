@@ -27,7 +27,7 @@ import vad.dashing.tbox.mbcan.decodeMbCanTrunkByte
  */
 object LauncherVehicleBodyRepository {
     private const val ENGINE_CLASS = "com.mengbo.mbCan.MBCanEngine"
-    private const val POLL_MS = 1_000L
+    private const val POLL_MS = 400L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var pollJob: Job? = null
     private var subscribed = false
@@ -58,7 +58,7 @@ object LauncherVehicleBodyRepository {
     fun refresh() {
         val body = when (UniversalCanRepository.mode.value) {
             HeadUnitCanMode.Android9MbCan -> readFromMbCan()
-            HeadUnitCanMode.Android10Vhal -> Android10VhalRepository.readVehicleBodyState()
+            HeadUnitCanMode.Android10Vhal -> Android10VhalRepository.readVehicleBodyState(_state.value)
                 ?: readFromMbCan()
         }
         if (body != null) {
@@ -153,13 +153,14 @@ object LauncherVehicleBodyRepository {
             lastRawDoorLog = raw
             vad.dashing.tbox.DiagFileLog.i("BodyRaw", "doorBytes $raw")
         }
+        val previous = _state.value
         return VehicleBodyState(
-            doorFlOpen = decodeMbCanDoorByte(driverDoor),
-            doorFrOpen = decodeMbCanDoorByte(passengerDoor),
-            doorRlOpen = decodeMbCanDoorByte(rearLeftDoor),
-            doorRrOpen = decodeMbCanDoorByte(rearRightDoor),
-            tailgateOpen = decodeMbCanTrunkByte(trunk),
-            hoodOpen = decodeMbCanTrunkByte(hood),
+            doorFlOpen = decodeMbCanDoorByte(driverDoor, previous.doorFlOpen),
+            doorFrOpen = decodeMbCanDoorByte(passengerDoor, previous.doorFrOpen),
+            doorRlOpen = decodeMbCanDoorByte(rearLeftDoor, previous.doorRlOpen),
+            doorRrOpen = decodeMbCanDoorByte(rearRightDoor, previous.doorRrOpen),
+            tailgateOpen = decodeMbCanTrunkByte(trunk, previous.tailgateOpen),
+            hoodOpen = decodeMbCanTrunkByte(hood, previous.hoodOpen),
         )
     }
 

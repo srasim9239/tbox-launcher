@@ -34,9 +34,9 @@ import vad.dashing.tbox.CanDataViewModel
 import vad.dashing.tbox.R
 import vad.dashing.tbox.ui.theme.tboxCaption
 
-private val CruiseChipWidth = 52.dp
-private val CruiseChipHeight = 36.dp
-private val CruiseChipGap = 6.dp
+private val CruiseChipWidth = 76.dp
+private val CruiseChipHeight = 52.dp
+private val CruiseChipGap = 8.dp
 
 @Composable
 fun LauncherCruisePresetControl(
@@ -65,7 +65,7 @@ fun LauncherCruisePresetControl(
         Box(
             modifier = Modifier
                 .size(width = CruiseChipWidth, height = CruiseChipHeight)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(tint.copy(alpha = 0.18f))
                 .clickable { expanded = !expanded },
             contentAlignment = Alignment.Center,
@@ -75,14 +75,14 @@ fun LauncherCruisePresetControl(
                     text = setSpeed.toString(),
                     style = MaterialTheme.typography.tboxCaption,
                     color = tint,
-                    fontSize = 14.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                 )
             } else {
                 Image(
                     painter = painterResource(R.drawable.ic_launcher_cruise),
                     contentDescription = stringResource(R.string.launcher_cruise_presets),
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(28.dp),
                     colorFilter = ColorFilter.tint(tint),
                 )
             }
@@ -128,7 +128,7 @@ private fun CruisePresetChip(
     Box(
         modifier = Modifier
             .size(width = CruiseChipWidth, height = CruiseChipHeight)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(
                 if (selected) tint.copy(alpha = 0.22f) else LauncherColors.LeftPanelCard,
             )
@@ -139,7 +139,7 @@ private fun CruisePresetChip(
             text = label,
             style = MaterialTheme.typography.tboxCaption,
             color = tint,
-            fontSize = 14.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
         )
     }

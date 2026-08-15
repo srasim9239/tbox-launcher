@@ -49,7 +49,13 @@ data class LocValues(
     val trueDirection: Float = 0f,
     val magneticDirection: Float = 0f,
     val updateTime: Date? = null,
-)
+) {
+    val hasGpsFix: Boolean
+        get() = locateStatus || (
+            usingSatellites > 0 &&
+                (kotlin.math.abs(latitude) > 0.001 || kotlin.math.abs(longitude) > 0.001)
+        )
+}
 
 data class UtcTime(
     val year: Int = 0,
@@ -399,6 +405,8 @@ object TboxRepository {
     fun resetConnectionData() {
         _tboxConnected.value = false
         _netState.value = NetState()
+        _locValues.value = LocValues()
+        _isLocValuesTrue.value = false
         _apnState.value = APNState()
         _apn2State.value = APNState()
         _apnStatus.value = false

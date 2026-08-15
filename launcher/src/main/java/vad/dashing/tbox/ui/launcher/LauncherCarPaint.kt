@@ -22,7 +22,10 @@ object LauncherCarPaint {
         // Near-black: 0x222222 reads as charcoal under Filament IBL/specular.
         LauncherCarPaintOption("cheqi03", R.string.launcher_paint_black, 0xFF050505.toInt()),
         LauncherCarPaintOption("cheqi04", R.string.launcher_paint_white, 0xFFCACACA.toInt()),
-        LauncherCarPaintOption("cheqi05", R.string.launcher_paint_gray, 0xFF595C61.toInt()),
+        LauncherCarPaintOption("cheqi05", R.string.launcher_paint_gray, 0xFF141618.toInt()),
+        // Deep British-racing green. IBL lifts mid-greens, so the stored
+        // swatch is already darker than #013220 and apply() shades it again.
+        LauncherCarPaintOption("cheqi06", R.string.launcher_paint_green, 0xFF000C08.toInt()),
     )
 
     val defaultId: String = "cheqi01"
@@ -80,16 +83,26 @@ object LauncherCarPaint {
         val r = ((color shr 16) and 0xFF) / 255f
         val g = ((color shr 8) and 0xFF) / 255f
         val b = (color and 0xFF) / 255f
-        val isBlack = paintId == "cheqi03"
+        val isGreen = paintId == "cheqi06"
+        val shade = if (isGreen) 0.38f else 1f
+        val rr = r * shade
+        val gg = g * shade
+        val bb = b * shade
+        // Same clearcoat as black: highlights read the body panels on every colour.
+        val metallic = 0.85f
+        val roughness = 0.28f
         materials.forEach { material ->
-            runCatching { material.setParameter("baseColorFactor", r, g, b, 1f) }
-            runCatching { material.setParameter("baseColor", Colors.RgbaType.SRGB, r, g, b, 1f) }
-            if (isBlack) {
-                // Keep specular highlights, but don't let roughness wash the body to gray.
-                runCatching { material.setParameter("roughnessFactor", 0.28f) }
-                runCatching { material.setParameter("metallicFactor", 0.85f) }
-                runCatching { material.setParameter("roughness", 0.28f) }
-                runCatching { material.setParameter("metallic", 0.85f) }
+            runCatching { material.setParameter("baseColorFactor", rr, gg, bb, 1f) }
+            runCatching { material.setParameter("baseColor", Colors.RgbaType.SRGB, rr, gg, bb, 1f) }
+            runCatching { material.setParameter("roughnessFactor", roughness) }
+            runCatching { material.setParameter("metallicFactor", metallic) }
+            runCatching { material.setParameter("roughness", roughness) }
+            runCatching { material.setParameter("metallic", metallic) }
+            runCatching { material.setParameter("specularFactor", 0.55f) }
+            runCatching { material.setParameter("reflectance", 0.50f) }
+            if (isGreen) {
+                runCatching { material.setParameter("emissiveFactor", 0f, 0f, 0f) }
+                runCatching { material.setParameter("emissive", Colors.RgbaType.LINEAR, 0f, 0f, 0f, 1f) }
             }
         }
     }

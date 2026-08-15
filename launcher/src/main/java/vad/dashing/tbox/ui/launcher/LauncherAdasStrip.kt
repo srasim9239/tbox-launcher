@@ -15,9 +15,21 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -52,13 +64,11 @@ fun LauncherAdasStrip(
         adas.accTakeOver || adas.adasTakeOver || adas.accOverride || adas.speedLimitWarning
     val showLanes = adas.laneAssistEngaged
     val showSla = adas.speedLimitKmh != null
-    val showTsr = adas.tsr.valid && adas.tsr.speedLimitKmh != null
-    val showRear = adas.rearThreats.hasAny
     val showHma = adas.hma != LauncherAdasAssistIcon.Hidden
     val showTja = adas.tja != LauncherAdasAssistIcon.Hidden
     val showSrr = adas.srrSystem != LauncherSrrSystemState.Hidden
     if (!pasOn && !cruiseActive && !showAcc && !showAlerts &&
-        !showLanes && !showSla && !showTsr && !showRear && !showHma && !showTja && !showSrr
+        !showLanes && !showSla && !showHma && !showTja && !showSrr
     ) {
         return
     }
@@ -76,19 +86,25 @@ fun LauncherAdasStrip(
             )
         }
         if (showHma) {
-            LauncherAdasChip(
-                text = stringResource(R.string.launcher_adas_hma),
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_hma),
                 tint = assistTint(adas.hma),
+                iconRes = R.drawable.ic_adas_hma,
             )
         }
         if (showTja) {
-            LauncherAdasChip(
-                text = stringResource(R.string.launcher_adas_tja),
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_tja),
                 tint = assistTint(adas.tja),
+                iconRes = R.drawable.ic_adas_tja,
             )
         }
         if (adas.srrSystem == LauncherSrrSystemState.Fault) {
-            LauncherAdasAlertChip(text = stringResource(R.string.launcher_adas_srr_fault))
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_srr_fault),
+                tint = Color(0xFFEF4444),
+                iconRes = R.drawable.ic_adas_fcw,
+            )
         }
         if (showAcc) {
             val accTint = when {
@@ -99,9 +115,10 @@ fun LauncherAdasStrip(
             }
             adas.accSetSpeedKmh?.let { speed ->
                 LauncherAdasSpeedBadge(speed = speed.toString(), tint = accTint)
-            } ?: LauncherAdasChip(
-                text = stringResource(R.string.launcher_adas_acc_standby),
+            } ?: LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_acc_standby),
                 tint = accTint,
+                iconRes = R.drawable.ic_launcher_cruise,
             )
         } else if (cruiseActive) {
             LauncherAdasSpeedBadge(speed = cruiseSpeed.toString())
@@ -112,32 +129,33 @@ fun LauncherAdasStrip(
                 tint = if (adas.speedLimitWarning) Color(0xFFEF4444) else Color(0xFFE11D48),
             )
         }
-        adas.tsr.speedLimitKmh?.takeIf { adas.tsr.valid }?.let { limit ->
-            LauncherAdasChip(
-                text = stringResource(R.string.launcher_adas_tsr_chip, limit),
-                tint = Color(0xFF2563EB),
+        // Camera TSR is drawn as the round sign over the 3D area, not as a "TSR" chip.
+        if (adas.fcwActive || adas.distanceWarning) {
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_fcw),
+                tint = Color(0xFFEF4444),
+                iconRes = R.drawable.ic_adas_fcw,
             )
         }
-        if (adas.fcwActive || adas.distanceWarning) {
-            LauncherAdasAlertChip(text = stringResource(R.string.launcher_adas_fcw))
-        }
         if (adas.aebHint) {
-            LauncherAdasAlertChip(text = stringResource(R.string.launcher_adas_aeb))
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_aeb),
+                tint = Color(0xFFEF4444),
+                iconRes = R.drawable.ic_adas_aeb,
+            )
         }
         if (adas.accTakeOver || adas.adasTakeOver) {
             LauncherAdasAlertChip(text = stringResource(R.string.launcher_adas_takeover))
         }
         if (adas.laneDepartureLeft || adas.laneDepartureRight || showLanes) {
-            LauncherAdasChip(
-                text = stringResource(R.string.launcher_adas_lka),
+            LauncherAdasIcon(
+                contentDescription = stringResource(R.string.launcher_adas_lka),
                 tint = when {
                     adas.laneDepartureLeft || adas.laneDepartureRight -> Color(0xFFF59E0B)
                     else -> LauncherColors.AccentBlue
                 },
+                iconRes = R.drawable.ic_adas_lka,
             )
-        }
-        if (showRear) {
-            LauncherRearThreatChips(adas.rearThreats)
         }
     }
 }
@@ -268,30 +286,70 @@ fun BoxScope.LauncherAdasTimeGapFlash(
     tint: Color = LauncherColors.AccentCyan,
 ) {
     val level = timeGapLevel ?: return
-    val visible = timeGapFlashUntilMs > android.os.SystemClock.uptimeMillis()
-    if (!visible) return
+    var now by remember { mutableLongStateOf(android.os.SystemClock.uptimeMillis()) }
+    LaunchedEffect(timeGapFlashUntilMs) {
+        while (android.os.SystemClock.uptimeMillis() < timeGapFlashUntilMs) {
+            delay(160)
+            now = android.os.SystemClock.uptimeMillis()
+        }
+        now = android.os.SystemClock.uptimeMillis()
+    }
+    if (timeGapFlashUntilMs <= now) return
     val bars = (level + 1).coerceIn(1, 3)
     Box(
         modifier = Modifier
             .align(Alignment.Center)
-            .clip(RoundedCornerShape(12.dp))
-            .background(LauncherColors.CardDark.copy(alpha = 0.88f))
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .clip(RoundedCornerShape(14.dp))
+            .background(LauncherColors.CardDark.copy(alpha = 0.90f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Canvas(
+            modifier = Modifier
+                .width(132.dp)
+                .height(52.dp),
         ) {
-            repeat(3) { index ->
-                Text(
-                    text = "˄",
-                    color = if (index < bars) tint else tint.copy(alpha = 0.28f),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+            drawTimeGapSchema(bars = bars, tint = tint)
         }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTimeGapSchema(
+    bars: Int,
+    tint: Color,
+) {
+    val w = size.width
+    val h = size.height
+    val carW = w * 0.20f
+    val carH = h * 0.42f
+    fun car(cx: Float, cy: Float) {
+        val path = Path().apply {
+            moveTo(cx - carW * 0.38f, cy + carH * 0.42f)
+            lineTo(cx - carW * 0.42f, cy - carH * 0.05f)
+            lineTo(cx - carW * 0.22f, cy - carH * 0.48f)
+            lineTo(cx + carW * 0.22f, cy - carH * 0.48f)
+            lineTo(cx + carW * 0.42f, cy - carH * 0.05f)
+            lineTo(cx + carW * 0.38f, cy + carH * 0.42f)
+            close()
+        }
+        drawPath(path, color = tint.copy(alpha = 0.92f), style = Stroke(width = 2.4f))
+    }
+    car(w * 0.16f, h * 0.58f)
+    car(w * 0.84f, h * 0.58f)
+    val gapLeft = w * 0.30f
+    val gapRight = w * 0.70f
+    val step = (gapRight - gapLeft) / 4f
+    repeat(3) { i ->
+        val x = gapLeft + step * (i + 1)
+        val on = i < bars
+        val color = tint.copy(alpha = if (on) 0.95f else 0.22f)
+        drawLine(
+            color = color,
+            start = Offset(x, h * 0.34f),
+            end = Offset(x, h * 0.78f),
+            strokeWidth = if (on) 5.5f else 3.5f,
+            cap = StrokeCap.Round,
+        )
     }
 }
 

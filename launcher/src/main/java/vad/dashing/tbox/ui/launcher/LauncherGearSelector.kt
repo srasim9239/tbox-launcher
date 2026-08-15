@@ -22,11 +22,15 @@ private val GEAR_SLOTS = listOf('P', 'R', 'N', 'D')
 
 fun resolveActiveGearSlot(gearBoxMode: String, gearBoxCurrentGear: Int?): Char? {
     val mode = gearBoxMode.uppercase()
+    // Mode letter wins. currentGear==0 while in D is "stopped in drive", not Park —
+    // treating it as P snapped the 3D camera to top-down with the road still in drive.
     return when {
-        mode.contains('P') || gearBoxCurrentGear == 0 -> 'P'
         mode.contains('R') -> 'R'
         mode.contains('N') -> 'N'
-        mode.contains('D') || (gearBoxCurrentGear != null && gearBoxCurrentGear > 0) -> 'D'
+        mode.contains('D') -> 'D'
+        mode.contains('P') -> 'P'
+        gearBoxCurrentGear == 0 -> 'P'
+        gearBoxCurrentGear != null && gearBoxCurrentGear > 0 -> 'D'
         else -> null
     }
 }

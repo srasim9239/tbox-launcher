@@ -104,6 +104,7 @@
     <string name="launcher_back_last_app_cd">Вернуться в последнее приложение</string>
     <string name="launcher_drive_mode_label">Режим вождения</string>
     <string name="launcher_vehicle_name">Jetour Dashing</string>
+    <string name="launcher_gps_no_fix">Нет фиксации GPS</string>
     <string name="launcher_vehicle_subtitle">TBox Monitor</string>
     <string name="launcher_metric_range">Запас хода</string>
     <string name="launcher_metric_cabin">Салон</string>
@@ -132,7 +133,7 @@
     <string name="launcher_adas_pas_on">Парктроник вкл.</string>
     <string name="launcher_adas_pas_off">Парктроник выкл.</string>
     <string name="launcher_adas_cruise">Круиз %1$s</string>
-    <string name="launcher_adas_acc_standby">ACC</string>
+    <string name="launcher_adas_acc_standby">Круиз</string>
     <string name="launcher_cruise_presets">Пресеты круиза</string>
     <string name="launcher_cruise_presets_title">Пресеты круиза</string>
     <string name="launcher_cruise_presets_desc">Скорости для быстрого выбора на главном экране</string>
@@ -142,10 +143,10 @@
     <string name="launcher_adas_time_gap_label">Дист.</string>
     <string name="launcher_adas_tsr_chip">TSR %1$d</string>
     <string name="launcher_adas_object_chip">%1$s · %2$d м</string>
-    <string name="launcher_adas_fcw">FCW</string>
-    <string name="launcher_adas_aeb">AEB</string>
+    <string name="launcher_adas_fcw">Столкновение</string>
+    <string name="launcher_adas_aeb">Торможение</string>
     <string name="launcher_adas_takeover">Руль</string>
-    <string name="launcher_adas_lka">LKA</string>
+    <string name="launcher_adas_lka">Удержание полосы</string>
     <string name="launcher_adas_obj_car">Авто</string>
     <string name="launcher_adas_obj_truck">Грузовик</string>
     <string name="launcher_adas_obj_moto">Мото</string>
@@ -161,9 +162,9 @@
     <string name="launcher_adas_dow_left">DOW ←</string>
     <string name="launcher_adas_dow_right">DOW →</string>
     <string name="launcher_adas_rcw">RCW</string>
-    <string name="launcher_adas_hma">HMA</string>
-    <string name="launcher_adas_tja">TJA</string>
-    <string name="launcher_adas_srr_fault">SRR !</string>
+    <string name="launcher_adas_hma">Автодальний</string>
+    <string name="launcher_adas_tja">Помощь в пробке</string>
+    <string name="launcher_adas_srr_fault">Слепые зоны</string>
     <string name="launcher_nav_accessibility_label">Dashing Club: кнопка Назад</string>
     <string name="launcher_nav_accessibility_desc">Нужен для кнопки «Назад» в доке лаунчера. Данные не передаются наружу.</string>
     <string name="launcher_open_adas_cd">Открыть ADAS</string>
@@ -241,6 +242,7 @@
     <string name="launcher_paint_black">Чёрный</string>
     <string name="launcher_paint_white">Белый</string>
     <string name="launcher_paint_gray">Серый</string>
+    <string name="launcher_paint_green">Зелёный</string>
     <string name="launcher_vs_body_can_note">Состояние дверей с CAN/mbCAN. Для ручного теста включите SIM в панели отладки.</string>
     <string name="launcher_vs_body_sim_note">Режим симуляции: переключатели меняют схему для теста вне авто.</string>
     <string name="launcher_vs_tap_car_hint">Нажмите на авто</string>

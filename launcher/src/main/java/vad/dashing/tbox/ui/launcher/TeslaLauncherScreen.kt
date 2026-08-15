@@ -228,7 +228,7 @@ fun TeslaLauncherScreen(
                 }
             }
 
-            if (settingsOpen) {
+            if (settingsOpen && !LauncherVehicleSettingsOverlayWindow.isShowing()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

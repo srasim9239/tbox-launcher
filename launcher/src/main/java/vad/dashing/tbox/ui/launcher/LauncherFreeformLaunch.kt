@@ -145,19 +145,26 @@ internal fun tryLaunchIntentInBounds(
         LastAppTracker.recordLaunch(context, packageName)
         Log.w("LauncherAppLaunch", "freeform startActivity OK pkg=$packageName bounds=$targetBounds")
         FreeformLaunchRegistry.record(packageName, targetBounds)
-        // OEM often shows a default freeform rect; force the visible stack to our bounds.
-        val apply = { forceFreeformBounds(appCtx, packageName, targetBounds) }
-        apply()
-        val handler = Handler(Looper.getMainLooper())
-        handler.postDelayed(apply, 250L)
-        handler.postDelayed(apply, 700L)
-        handler.postDelayed(apply, 1400L)
+        // Games often splash then request fullscreen. Keep pinning freeform
+        // for a few seconds so they stay in the embedded window.
+        pinFreeformBounds(appCtx, packageName, targetBounds)
     }.onFailure {
         Log.w("LauncherAppLaunch", "freeform startActivity failed pkg=$packageName bounds=$targetBounds", it)
     }.isSuccess
 }
 
 @Suppress("DEPRECATION")
+private val FREEFORM_PIN_DELAYS_MS = longArrayOf(0L, 250L, 700L, 1400L, 2500L, 4000L, 6000L)
+
+/** Re-apply freeform bounds while splash/game activities try to go fullscreen. */
+private fun pinFreeformBounds(context: Context, packageName: String, bounds: Rect) {
+    val handler = Handler(Looper.getMainLooper())
+    val apply = { forceFreeformBounds(context, packageName, bounds) }
+    FREEFORM_PIN_DELAYS_MS.forEach { delayMs ->
+        if (delayMs <= 0L) apply() else handler.postDelayed(apply, delayMs)
+    }
+}
+
 internal fun forceFreeformBounds(
     context: Context,
     packageName: String,
@@ -187,6 +194,7 @@ internal fun forceFreeformBoundsByTaskId(
     val rect = Rect(bounds)
     runCatching { am.moveTaskToFront(taskId, 0) }
         .onFailure { Log.w("LauncherAppLaunch", "moveTaskToFront failed task=$taskId", it) }
+    setTaskWindowingModeFreeform(am, taskId)
 
     val resized = runCatching {
         val method = ActivityManager::class.java.getMethod(
@@ -227,6 +235,31 @@ internal fun forceFreeformBoundsByTaskId(
         "LauncherAppLaunch",
         "resizeTask ok=$resized task=$taskId label=$label bounds=$rect",
     )
+}
+
+private fun setTaskWindowingModeFreeform(am: ActivityManager, taskId: Int) {
+    runCatching {
+        val method = ActivityManager::class.java.getMethod(
+            "setTaskWindowingMode",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType,
+        )
+        method.invoke(am, taskId, WINDOWING_MODE_FREEFORM, true)
+        return
+    }
+    runCatching {
+        val atmClass = Class.forName("android.app.ActivityTaskManager")
+        val getInstance = atmClass.getMethod("getInstance")
+        val atm = getInstance.invoke(null)
+        val method = atmClass.getMethod(
+            "setTaskWindowingMode",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            Boolean::class.javaPrimitiveType,
+        )
+        method.invoke(atm, taskId, WINDOWING_MODE_FREEFORM, true)
+    }
 }
 
 /**

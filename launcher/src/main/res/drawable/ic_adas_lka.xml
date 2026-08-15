@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Lane keep: car between two lane marks -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4,4h2v4H4zM4,10h2v4H4zM4,16h2v4H4zM18,4h2v4h-2zM18,10h2v4h-2zM18,16h2v4h-2z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M9.2,14.6l1.1,-5.2c0.15,-0.7 0.7,-1.2 1.4,-1.2h0.6c0.7,0 1.25,0.5 1.4,1.2l1.1,5.2c0.12,0.55 -0.3,1.1 -0.86,1.1H10.06c-0.56,0 -0.98,-0.55 -0.86,-1.1zM10.6,16.2h2.8l0.35,1.5H10.25z" />
+</vector>

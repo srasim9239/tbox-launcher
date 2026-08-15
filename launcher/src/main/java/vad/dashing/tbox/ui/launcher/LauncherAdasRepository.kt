@@ -2,9 +2,16 @@ package vad.dashing.tbox.ui.launcher
 
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Proxy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.mbcan.MbAdasTsrFacade
 import vad.dashing.tbox.mbcan.MbCanAvailability
 import vad.dashing.tbox.mbcan.MbCanEngineFacade
@@ -31,6 +38,12 @@ object LauncherAdasRepository {
     // frames before a reading becomes visible.
     private var radarGraceUntilMs = 0L
     private var radarPending: LauncherPdcZones? = null
+    private var lastRadarMs = 0L
+    @Volatile private var lastSpeedKmh = 0f
+    private val adasScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var pdcWatchdogJob: Job? = null
+    private const val PDC_STALE_MS = 1_400L
+    private const val PDC_DRIVE_CLEAR_KMH = 18f
 
     private val _state = MutableStateFlow(LauncherAdasState())
     val state: StateFlow<LauncherAdasState> = _state.asStateFlow()
@@ -69,6 +82,10 @@ object LauncherAdasRepository {
         publish()
     }
 
+    fun updateMotion(speedKmh: Float) {
+        lastSpeedKmh = speedKmh
+    }
+
     fun ensureActive() {
         if (MbCanEngineFacade.ensureInitialized() !is MbCanAvailability.Available) return
         // Registration is intentionally retried for every missing listener. On the HU
@@ -81,6 +98,7 @@ object LauncherAdasRepository {
         registerRctaListener()
         registerDowListener()
         registerRadarListener()
+        startPdcWatchdog()
         active = frmInfoListenerProxy != null ||
             lkaStatusListenerProxy != null ||
             bsdListenerProxy != null ||
@@ -97,6 +115,8 @@ object LauncherAdasRepository {
         unregisterRctaListener()
         unregisterDowListener()
         unregisterRadarListener()
+        pdcWatchdogJob?.cancel()
+        pdcWatchdogJob = null
         MbAdasTsrFacade.stop()
         tsrWatchdog.cancel()
         active = false
@@ -320,9 +340,9 @@ object LauncherAdasRepository {
             if (method.name == "onRadarSensorChange" && args?.isNotEmpty() == true) {
                 parseRadarSensor(args[0])?.let { zones ->
                     val now = android.os.SystemClock.uptimeMillis()
+                    lastRadarMs = now
                     if (now >= radarGraceUntilMs) {
                         if (zones == radarPending || zones == pdcZones) {
-                            // Stable reading (or already published) — show it.
                             pdcZones = zones
                             publish()
                         }
@@ -360,21 +380,43 @@ object LauncherAdasRepository {
             (obj.javaClass.getMethod(getter).invoke(obj) as? Number)?.toInt() ?: 0
         }.getOrDefault(0)
 
+    private fun startPdcWatchdog() {
+        if (pdcWatchdogJob?.isActive == true) return
+        pdcWatchdogJob = adasScope.launch {
+            while (isActive) {
+                delay(400)
+                val now = android.os.SystemClock.uptimeMillis()
+                val stale = lastRadarMs > 0L && now - lastRadarMs > PDC_STALE_MS
+                val drivingAway = lastSpeedKmh > PDC_DRIVE_CLEAR_KMH
+                if (pdcZones.hasAny && (stale || drivingAway)) {
+                    pdcZones = LauncherPdcZones()
+                    radarPending = null
+                    publish()
+                }
+            }
+        }
+    }
+
     private fun parseRadarSensor(raw: Any?): LauncherPdcZones? = runCatching {
         val sensor = raw ?: return null
+        val work = intField(sensor, "getRadarWorkSts")
+        val detect = intField(sensor, "getRadarDetectSts")
+        // 0 = module off / no sweep. Do not keep the last obstacle after PAS shuts down.
+        if (work == 0 || detect == 0) return LauncherPdcZones()
+        // OEM L/R on this car is mirrored vs the 3D body (driver-left is packet-right).
         LauncherPdcZones(
-            frontSideLeftCm = intField(sensor, "getLHSF_Distance"),
-            frontLeftCm = intField(sensor, "getLHF_Distance"),
-            frontMidLeftCm = intField(sensor, "getLHMF_Distance"),
-            frontMidRightCm = intField(sensor, "getRHMF_Distance"),
-            frontRightCm = intField(sensor, "getRHF_Distance"),
-            frontSideRightCm = intField(sensor, "getRHSF_Distance"),
-            rearSideLeftCm = intField(sensor, "getLHSR_Distance"),
-            rearLeftCm = intField(sensor, "getLHR_Distance"),
-            rearMidLeftCm = intField(sensor, "getLHMR_Distance"),
-            rearMidRightCm = intField(sensor, "getRHMR_Distance"),
-            rearRightCm = intField(sensor, "getRHR_Distance"),
-            rearSideRightCm = intField(sensor, "getRHSR_Distance"),
+            frontSideLeftCm = intField(sensor, "getRHSF_Distance"),
+            frontLeftCm = intField(sensor, "getRHF_Distance"),
+            frontMidLeftCm = intField(sensor, "getRHMF_Distance"),
+            frontMidRightCm = intField(sensor, "getLHMF_Distance"),
+            frontRightCm = intField(sensor, "getLHF_Distance"),
+            frontSideRightCm = intField(sensor, "getLHSF_Distance"),
+            rearSideLeftCm = intField(sensor, "getRHSR_Distance"),
+            rearLeftCm = intField(sensor, "getRHR_Distance"),
+            rearMidLeftCm = intField(sensor, "getRHMR_Distance"),
+            rearMidRightCm = intField(sensor, "getLHMR_Distance"),
+            rearRightCm = intField(sensor, "getLHR_Distance"),
+            rearSideRightCm = intField(sensor, "getLHSR_Distance"),
         )
     }.getOrNull()
 
@@ -537,5 +579,7 @@ object LauncherAdasRepository {
         tsrSign = LauncherAdasTsrSign()
         rearThreats = LauncherRearThreats()
         pdcZones = LauncherPdcZones()
+        lastRadarMs = 0L
+        radarPending = null
     }
 }

@@ -66,8 +66,10 @@ internal fun launchVehicleSettingsWindow(context: Context) {
     LauncherVehicleSettingsWindow.hide()
     LauncherVehicleSettingsActivity.finishIfOpen()
     val shownAsSystemOverlay = LauncherVehicleSettingsOverlayWindow.show(context)
+    // Always mark open so the home 3D SceneView is torn down — two Filament
+    // views on the HU make the settings model hitch.
+    LauncherVehicleSettingsUiState.markOpen()
     if (!shownAsSystemOverlay) {
-        LauncherVehicleSettingsUiState.markOpen()
         LauncherVehicleSettingsUiState.revealProgress = 1f
         LauncherOverlayElevator.forceRecoverToFront(context)
         LauncherOverlayElevator.setHoldSource("vehicle_settings", true)

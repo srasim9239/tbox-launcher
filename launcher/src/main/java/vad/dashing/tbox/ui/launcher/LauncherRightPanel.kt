@@ -398,7 +398,7 @@ fun LauncherRightPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = stringResource(R.string.launcher_vehicle_name),
+                text = outsideTemp?.let { "${valueToString(it, 0)}°" } ?: "—°",
                 color = LauncherColors.TextPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,

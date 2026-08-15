@@ -15,6 +15,9 @@ class TboxViewModel : ViewModel() {
     val netState: StateFlow<NetState> = TboxRepository.netState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NetState())
 
+    val locValues: StateFlow<LocValues> = TboxRepository.locValues
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LocValues())
+
     val currentTheme: StateFlow<Int> = TboxRepository.currentTheme
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 2)
 }

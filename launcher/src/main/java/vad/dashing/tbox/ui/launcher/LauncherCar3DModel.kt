@@ -1,5 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -93,6 +95,8 @@ fun LauncherCar3DModel(
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit = {},
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit = {},
     onBodyRigAvailabilityChanged: (Boolean) -> Unit = {},
+    projectPdcRings: Boolean = false,
+    projectHeadlights: Boolean = false,
     textureSurface: Boolean = false,
 ) {
     val interactionModifier = if (onClick != null || onLongClick != null) {
@@ -133,6 +137,8 @@ fun LauncherCar3DModel(
             onPdcRingsChanged = onPdcRingsChanged,
             onHeadlightFrameChanged = onHeadlightFrameChanged,
             onBodyRigAvailabilityChanged = onBodyRigAvailabilityChanged,
+            projectPdcRings = projectPdcRings,
+            projectHeadlights = projectHeadlights,
             textureSurface = textureSurface,
         )
         if (onClick != null || onLongClick != null) {
@@ -163,6 +169,8 @@ private fun LauncherCarFilamentModel(
     onPdcRingsChanged: (LauncherPdcRingFrame?) -> Unit,
     onHeadlightFrameChanged: (LauncherHeadlightFrame?) -> Unit,
     onBodyRigAvailabilityChanged: (Boolean) -> Unit,
+    projectPdcRings: Boolean,
+    projectHeadlights: Boolean,
     textureSurface: Boolean = false,
 ) {
     val engine = rememberEngine()
@@ -182,6 +190,9 @@ private fun LauncherCarFilamentModel(
     val pdcRingsCallbackRef = rememberUpdatedState(onPdcRingsChanged)
     val headlightFrameCallbackRef = rememberUpdatedState(onHeadlightFrameChanged)
     val rigAvailabilityCallbackRef = rememberUpdatedState(onBodyRigAvailabilityChanged)
+    val projectPdcRef = rememberUpdatedState(projectPdcRings)
+    val projectHeadlightsRef = rememberUpdatedState(projectHeadlights)
+    val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
     var driveBlend by remember {
@@ -216,7 +227,10 @@ private fun LauncherCarFilamentModel(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            overlayPublishHandler.removeCallbacksAndMessages(null)
+        }
     }
 
     LaunchedEffect(surfaceEpoch) {
@@ -320,7 +334,11 @@ private fun LauncherCarFilamentModel(
                         steerPreview -> 1f
                         else -> 0f
                     }
-                    driveBlend += (driveTarget - driveBlend) * (1f - kotlin.math.exp(-dt * 2.0f))
+                    if (inDriveRef.value && transition < 0.02f) {
+                        driveBlend = 1f
+                    } else {
+                        driveBlend += (driveTarget - driveBlend) * (1f - kotlin.math.exp(-dt * 2.0f))
+                    }
 
                     // Continuous camera morph: top/drive ↔ settings (no body yaw while driving).
                     val drivePos = Float3(
@@ -366,60 +384,69 @@ private fun LauncherCarFilamentModel(
                         transition,
                     )
                     val targetScale = baseScale * pinchScale
+                    node.isVisible = true
                     if (!modelReady) {
-                        // Start slightly larger, then settle smoothly after the prepared
-                        // model becomes visible. This masks unavoidable SurfaceView startup.
-                        renderedScale = targetScale * lerp(1.08f, 1.18f, transition)
+                        renderedScale = targetScale
                         node.scale = Scale(renderedScale)
                         preparedFrames++
-                        if (preparedFrames >= 12) {
-                            node.isVisible = true
+                        if (preparedFrames >= 4) {
                             modelReady = true
                         }
                     } else {
-                        if (!node.isVisible) node.isVisible = true
                         val scaleResponse = 1f - kotlin.math.exp(-dt * 8f)
                         renderedScale += (targetScale - renderedScale) * scaleResponse
                         node.scale = Scale(renderedScale)
                     }
 
                     animationController?.update(rigStateRef.value, dt)
-                    if (frameNs - lastAnchorPublishNs >= 100_000_000L) {
+                    val publishNs = if (transition > 0.5f) 250_000_000L else 100_000_000L
+                    if (frameNs - lastAnchorPublishNs >= publishNs) {
                         lastAnchorPublishNs = frameNs
                         val viewport = cameraNode.viewport
-                        anchorCallbackRef.value(
+                        val widthPx = viewport?.width ?: 0
+                        val heightPx = viewport?.height ?: 0
+                        val wheels = runCatching {
                             rigController?.projectWheelAnchors(
                                 cameraNode = cameraNode,
-                                viewportWidthPx = viewport?.width ?: 0,
-                                viewportHeightPx = viewport?.height ?: 0,
-                            ).orEmpty(),
-                        )
-                        doorAnchorCallbackRef.value(
+                                viewportWidthPx = widthPx,
+                                viewportHeightPx = heightPx,
+                            )
+                        }.getOrNull()
+                        val doors = runCatching {
                             rigController?.projectDoorAnchors(
                                 cameraNode = cameraNode,
-                                viewportWidthPx = viewport?.width ?: 0,
-                                viewportHeightPx = viewport?.height ?: 0,
-                            ).orEmpty(),
-                        )
-                        pdcRingsCallbackRef.value(
-                            rigController?.projectPdcRings(
-                                cameraNode = cameraNode,
-                                viewportWidthPx = viewport?.width ?: 0,
-                                viewportHeightPx = viewport?.height ?: 0,
-                            ),
-                        )
-                        // Headlight overlay is home-only; skip projection in vehicle settings.
-                        if (currentTransition < 0.5f) {
-                            headlightFrameCallbackRef.value(
+                                viewportWidthPx = widthPx,
+                                viewportHeightPx = heightPx,
+                            )
+                        }.getOrNull()
+                        val pdc = if (projectPdcRef.value) {
+                            runCatching {
+                                rigController?.projectPdcRings(
+                                    cameraNode = cameraNode,
+                                    viewportWidthPx = widthPx,
+                                    viewportHeightPx = heightPx,
+                                )
+                            }.getOrNull()
+                        } else {
+                            null
+                        }
+                        val headlights = if (projectHeadlightsRef.value && currentTransition < 0.5f) {
+                            runCatching {
                                 rigController?.projectHeadlightBeams(
                                     cameraNode = cameraNode,
-                                    viewportWidthPx = viewport?.width ?: 0,
-                                    viewportHeightPx = viewport?.height ?: 0,
+                                    viewportWidthPx = widthPx,
+                                    viewportHeightPx = heightPx,
                                     driveBlend = driveBlend,
-                                ),
-                            )
+                                )
+                            }.getOrNull()
                         } else {
-                            headlightFrameCallbackRef.value(null)
+                            null
+                        }
+                        overlayPublishHandler.post {
+                            anchorCallbackRef.value(wheels.orEmpty())
+                            doorAnchorCallbackRef.value(doors.orEmpty())
+                            pdcRingsCallbackRef.value(pdc)
+                            headlightFrameCallbackRef.value(headlights)
                         }
                     }
                 },
@@ -457,7 +484,7 @@ private fun LauncherCarFilamentModel(
                         ),
                     ),
                     apply = {
-                        isVisible = modelReady
+                        isVisible = true
                         modelNodeRef.value = this
                     },
                 )

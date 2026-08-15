@@ -7,6 +7,8 @@ import dashingineering.jetour.tboxcore.types.LogType
 import dashingineering.jetour.tboxcore.types.TBoxClientCallback
 import java.net.DatagramPacket
 import java.net.InetAddress
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -160,6 +162,7 @@ class TboxLinkManager(
             while (isActive) {
                 if (TboxRepository.tboxConnected.value) {
                     requestCanFrames()
+                    requestLocSubscribe()
                 }
                 delay(CAN_RESUB_MS)
             }
@@ -210,7 +213,10 @@ class TboxLinkManager(
             TboxRepository.addLog("INFO", "TBox connection", "TBox connected")
             TboxRepository.updateTboxConnected(true)
             TboxRepository.updateTboxConnectionTime()
-            scope.launch { requestCanFrames() }
+            scope.launch {
+                requestCanFrames()
+                requestLocSubscribe()
+            }
         } else {
             TboxRepository.addLog("WARN", "TBox connection", "TBox disconnected")
             TboxRepository.resetConnectionData()
@@ -220,6 +226,10 @@ class TboxLinkManager(
 
     private suspend fun requestCanFrames() {
         send(CRT_CODE, 0x15, byteArrayOf(0x01, 0x02), needLog = false)
+    }
+
+    private suspend fun requestLocSubscribe() {
+        send(LOC_CODE, 0x05, byteArrayOf(0x02, LOC_PERIOD_S, 0x00), needLog = false)
     }
 
     private suspend fun send(
@@ -260,6 +270,7 @@ class TboxLinkManager(
         when (module) {
             MDC_CODE -> if (cmd == 0x87.toByte()) parseMdcNetState(payload)
             CRT_CODE -> if (cmd == 0x95.toByte()) parseCrtCanFrame(payload)
+            LOC_CODE -> if (cmd == 0x85.toByte()) parseLocValues(payload)
             else -> Unit
         }
     }
@@ -319,6 +330,51 @@ class TboxLinkManager(
         }
     }
 
+    private fun parseLocValues(data: ByteArray) {
+        if (data.size < 45) return
+        if (data.copyOfRange(0, 4).contentEquals(byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()))) {
+            return
+        }
+        runCatching {
+            val gpsData = data.copyOfRange(6, 45)
+            val buffer = ByteBuffer.wrap(gpsData).order(ByteOrder.LITTLE_ENDIAN)
+            val locateStatus = buffer.get().toInt() and 0xFF != 0
+            val utcTime = UtcTime(
+                year = buffer.get().toInt() and 0xFF,
+                month = buffer.get().toInt() and 0xFF,
+                day = buffer.get().toInt() and 0xFF,
+                hour = buffer.get().toInt() and 0xFF,
+                minute = buffer.get().toInt() and 0xFF,
+                second = buffer.get().toInt() and 0xFF,
+            )
+            val longitudeDirection = buffer.get().toInt() and 0xFF
+            val longitude = buffer.int.toDouble() / 1_000_000.0 * if (longitudeDirection == 1) -1 else 1
+            val latitudeDirection = buffer.get().toInt() and 0xFF
+            val latitude = buffer.int.toDouble() / 1_000_000.0 * if (latitudeDirection == 1) -1 else 1
+            val altitude = buffer.int.toDouble() / 1_000_000.0
+            val visibleSatellites = buffer.get().toInt() and 0xFF
+            val usingSatellites = buffer.get().toInt() and 0xFF
+            val speed = (buffer.short.toInt() and 0xFFFF) / 10f
+            val trueDirection = (buffer.short.toInt() and 0xFFFF) / 10f
+            val magneticDirection = (buffer.short.toInt() and 0xFFFF) / 10f
+            val locValues = LocValues(
+                locateStatus = locateStatus,
+                utcTime = utcTime,
+                longitude = longitude,
+                latitude = latitude,
+                altitude = altitude,
+                visibleSatellites = visibleSatellites,
+                usingSatellites = usingSatellites,
+                speed = speed,
+                trueDirection = trueDirection,
+                magneticDirection = magneticDirection,
+                updateTime = Date(),
+            )
+            TboxRepository.updateLocValues(locValues)
+            TboxRepository.updateIsLocValuesTrue(locValues.hasGpsFix)
+        }
+    }
+
     private fun parseCrtCanFrame(data: ByteArray) {
         if (!data.copyOfRange(0, 4).contentEquals(byteArrayOf(0x00, 0x00, 0x00, 0x00))) return
         try {
@@ -337,7 +393,9 @@ class TboxLinkManager(
         private const val RECONNECT_MS = 30_000L
         private val MDC_CODE = 0x25.toByte()
         private val CRT_CODE = 0x23.toByte()
+        private val LOC_CODE = 0x29.toByte()
         private val SELF_CODE = 0x50.toByte()
+        private const val LOC_PERIOD_S: Byte = 0x01
 
         private fun signalLevelFromCsq(csq: Int): Int = when {
             csq == 99 || csq < 0 -> 0

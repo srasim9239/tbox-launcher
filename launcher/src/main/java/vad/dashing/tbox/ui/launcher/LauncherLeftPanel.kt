@@ -82,6 +82,7 @@ fun LauncherLeftPanel(
     val motion = rememberLauncherVehicleMotion(tboxConnected, canViewModel)
 
     val racing = LauncherEggRace.active
+    val raceSprites = rememberRaceOncomingSprites()
     val raceLane = LauncherEggRace.playerLane
     val raceCars = LauncherEggRace.cars
     LauncherEggRaceTicker()
@@ -102,6 +103,7 @@ fun LauncherLeftPanel(
     // Same for ADAS: cruise/BSD/PDC sim replaces the live mbCAN state.
     val adas = LauncherDevVehicleState.adasStateOrNull() ?: adasLive
     val headlightBeams = rememberHeadlightBeams()
+    LauncherAdasRepository.updateMotion(effectiveSpeed)
 
     val rigState = LauncherCarRigState(
         doorFlOpen = effectiveBody.doorFlOpen,
@@ -165,6 +167,7 @@ fun LauncherLeftPanel(
             // Past the bumper: draw under the 3D so a dodge continues beside/behind the body.
             LauncherEggRaceCarsLayer(
                 cars = raceCars,
+                sprites = raceSprites,
                 minDepth = LauncherEggRace.PASS_UNDER_DEPTH,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -268,10 +271,6 @@ fun LauncherLeftPanel(
                     )
                 }
             }
-            if (!racing) {
-                LauncherAdasStrip(canViewModel = canViewModel)
-                LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
-            }
         }
 
         Box(
@@ -300,6 +299,8 @@ fun LauncherLeftPanel(
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
+                    projectPdcRings = !racing && adas.pdc.hasAny,
+                    projectHeadlights = !racing && headlightBeams.any,
                     textureSurface = racing,
                     modifier = Modifier
                         .fillMaxSize()
@@ -340,6 +341,21 @@ fun LauncherLeftPanel(
                         frame = headlightFrame,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    LauncherSpeedLimitOverlay(
+                        adas = adas,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 4.dp, end = 4.dp),
+                    )
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 2.dp, top = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        LauncherAdasStrip(canViewModel = canViewModel)
+                        LauncherVehicleAlertsStrip(modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
             if (!racing) {
@@ -399,6 +415,7 @@ fun LauncherLeftPanel(
         if (racing) {
             LauncherEggRaceCarsLayer(
                 cars = raceCars,
+                sprites = raceSprites,
                 maxDepth = LauncherEggRace.PASS_UNDER_DEPTH,
                 modifier = Modifier.fillMaxSize(),
             )
