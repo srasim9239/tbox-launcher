@@ -163,6 +163,8 @@ private fun DrawScope.drawPdcSegment(
     sweep: Float,
     driving: Boolean,
     pulse: Float,
+    extraRadialBoost: Float? = null,
+    forceAllRings: Boolean = false,
 ) {
     if (sweep < 3f) return
     val color = when (seg.level) {
@@ -174,23 +176,23 @@ private fun DrawScope.drawPdcSegment(
     val alphaScale = if (seg.level == LauncherPdcLevel.Near) pulse else 1f
 
     // Approaching obstacle "advances" inward: far lights only the outer ring.
-    val ringIndex: IntArray = when (seg.level) {
-        LauncherPdcLevel.Far -> intArrayOf(2)
-        LauncherPdcLevel.Mid -> intArrayOf(1, 2)
-        LauncherPdcLevel.Near -> intArrayOf(0, 1, 2)
-        LauncherPdcLevel.None -> return
+    val ringIndex: IntArray = when {
+        forceAllRings -> intArrayOf(0, 1, 2)
+        seg.level == LauncherPdcLevel.Far -> intArrayOf(2)
+        seg.level == LauncherPdcLevel.Mid -> intArrayOf(1, 2)
+        seg.level == LauncherPdcLevel.Near -> intArrayOf(0, 1, 2)
+        else -> return
     }
     // Drive camera: slight extra outward stretch on top of the geometric rear boost.
-    val radialBoost = if (driving) 1.05f else 1f
+    val radialBoost = extraRadialBoost ?: if (driving) 1.05f else 1f
     val strokeWidth = (seg.pxPerMeter * if (driving) 0.13f else 0.12f).coerceIn(6f, 14f)
-    val endAngle = startAngle + sweep
 
     ringIndex.forEach { ring ->
         val ringPts = frame.rings.getOrNull(ring) ?: return@forEach
-        val slice = ringPts.filter { angleWithinDeg(it.first, startAngle, endAngle) }
-        if (slice.size < 2) return@forEach
+        val pts = ringArcPoints(ringPts, startAngle, sweep)
+        if (pts.size < 2) return@forEach
         val path = Path()
-        slice.forEachIndexed { index, (_, pt) ->
+        pts.forEachIndexed { index, pt ->
             val x = frame.center.x + (pt.x - frame.center.x) * radialBoost
             val y = frame.center.y + (pt.y - frame.center.y) * radialBoost
             if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
@@ -204,10 +206,92 @@ private fun DrawScope.drawPdcSegment(
     }
 }
 
+/** Consecutive ring samples in [start, start+sweep]; falls back to nearest-angle samples. */
+private fun ringArcPoints(
+    ringPts: List<Pair<Float, Offset>>,
+    startAngle: Float,
+    sweep: Float,
+): List<Offset> {
+    if (ringPts.size < 2) return emptyList()
+    val endAngle = startAngle + sweep
+    val slice = ringPts
+        .filter { angleWithinDeg(it.first, startAngle, endAngle) }
+        .sortedBy { ((it.first - startAngle + 360f) % 360f) }
+        .map { it.second }
+    if (slice.size >= 2) return slice
+    val steps = 6
+    return (0..steps).mapNotNull { i ->
+        val a = startAngle + sweep * (i / steps.toFloat())
+        ringPts.minByOrNull { angularDiffDeg(it.first, a) }?.second
+    }
+}
+
 private fun angleWithinDeg(angle: Float, start: Float, end: Float): Boolean {
     fun norm(a: Float) = ((a % 360f) + 360f) % 360f
     val a = norm(angle)
     val s = norm(start)
     val e = norm(end)
     return if (s <= e) a in s..e else a >= s || a <= e
+}
+
+/**
+ * BSD as the same sonar band as PDC, on the rear corners (not the mid-sides).
+ * Short ~26° slices stay readable in the drive camera, where the true side
+ * of the ring falls under the 3D body / off the chase-cam frustum.
+ */
+@Composable
+fun LauncherBsdOverlay(
+    threats: LauncherRearThreats,
+    rings: LauncherPdcRingFrame?,
+    driving: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (rings == null) return
+    if (!threats.hasBsd) return
+    val pulse by rememberInfiniteTransition(label = "bsdPulse").animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(430), RepeatMode.Reverse),
+        label = "bsdPulseValue",
+    )
+    Canvas(modifier = modifier.fillMaxSize()) {
+        drawBsdDiagonals(threats, rings, driving, pulse)
+    }
+}
+
+private fun DrawScope.drawBsdDiagonals(
+    threats: LauncherRearThreats,
+    frame: LauncherPdcRingFrame,
+    driving: Boolean,
+    pulse: Float,
+) {
+    val px = maxOf(frame.pxPerMeterRear, frame.pxPerMeterFront)
+    // World angle: 0° nose, 90° left, 180° tail, 270° right.
+    // Sit on the rear quarters (half the previous side-diagonal sweep).
+    val sweep = 26f
+    listOf(
+        threats.bsdLeft to 138f,
+        threats.bsdRight to 196f,
+    ).forEach { (level, startDeg) ->
+        if (level == LauncherRearThreatLevel.Off) return@forEach
+        val pdcLevel = when (level) {
+            LauncherRearThreatLevel.Alert -> LauncherPdcLevel.Near
+            LauncherRearThreatLevel.Caution -> LauncherPdcLevel.Mid
+            LauncherRearThreatLevel.Off -> return@forEach
+        }
+        drawPdcSegment(
+            frame = frame,
+            seg = PdcSeg(
+                angleDeg = startDeg + sweep * 0.5f,
+                pxPerMeter = px,
+                level = pdcLevel,
+            ),
+            startAngle = startDeg,
+            sweep = sweep,
+            driving = driving,
+            pulse = pulse,
+            extraRadialBoost = if (driving) 1.10f else 1.06f,
+            forceAllRings = true,
+        )
+    }
 }

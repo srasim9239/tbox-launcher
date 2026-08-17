@@ -299,7 +299,7 @@ fun LauncherLeftPanel(
                     onPdcRingsChanged = { pdcRings = it },
                     onHeadlightFrameChanged = { headlightFrame = it },
                     onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
-                    projectPdcRings = !racing && adas.pdc.hasAny,
+                    projectPdcRings = !racing && (adas.pdc.hasAny || adas.rearThreats.hasBsd),
                     projectHeadlights = !racing && headlightBeams.any,
                     textureSurface = racing,
                     modifier = Modifier
@@ -332,6 +332,12 @@ fun LauncherLeftPanel(
                     )
                     LauncherPdcOverlay(
                         pdc = adas.pdc,
+                        rings = pdcRings,
+                        driving = inDriveGear || steerPreview,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    LauncherBsdOverlay(
+                        threats = adas.rearThreats,
                         rings = pdcRings,
                         driving = inDriveGear || steerPreview,
                         modifier = Modifier.fillMaxSize(),

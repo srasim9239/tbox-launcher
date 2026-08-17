@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 
 /**
  * Body-local marks: DOW = door leaf, RCTA = incoming bar, RCW = rear wash.
- * BSD is a chip in the ADAS strip, not a car sprite on the road.
+ * BSD is a PDC-style sonar band on the rear-side diagonals ([LauncherBsdOverlay]).
  */
 @Composable
 fun LauncherRearThreatOverlay(

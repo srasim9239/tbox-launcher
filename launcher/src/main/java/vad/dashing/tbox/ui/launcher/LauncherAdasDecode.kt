@@ -138,6 +138,10 @@ data class LauncherRearThreats(
 
     val right: LauncherRearThreatLevel
         get() = maxOf(bsdRight, rctaRight, dowRight)
+
+    val hasBsd: Boolean
+        get() = bsdLeft != LauncherRearThreatLevel.Off ||
+            bsdRight != LauncherRearThreatLevel.Off
 }
 
 data class LauncherAdasState(
