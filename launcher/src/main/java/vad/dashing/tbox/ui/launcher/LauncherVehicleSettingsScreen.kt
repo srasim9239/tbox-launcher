@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -100,8 +101,7 @@ fun LauncherVehicleSettingsScreen(
     var paintId by remember(context) { mutableStateOf(LauncherAppConfigStore.carPaintId(context)) }
     var paintRevision by remember { mutableStateOf(0) }
     var expandedSection by remember { mutableStateOf<VehicleSettingsSection?>(VehicleSettingsSection.Status) }
-    var settingsYaw by remember { mutableStateOf(0f) }
-    var settingsScale by remember { mutableStateOf(SETTINGS_USER_SCALE_MIN) }
+    val settingsOrbit = remember { LauncherSettingsOrbitState() }
     var wheelAnchors by remember {
         mutableStateOf<Map<LauncherWheelCorner, Offset>>(emptyMap())
     }
@@ -150,9 +150,12 @@ fun LauncherVehicleSettingsScreen(
     }
     val modelGestureModifier = Modifier
         .fillMaxSize()
-        .pointerInput(Unit) {
+        .pointerInput(settingsOrbit) {
             awaitEachGesture {
                 val firstDown = awaitFirstDown(requireUnconsumed = false)
+                settingsOrbit.beginInteraction()
+                val velocityTracker = VelocityTracker()
+                velocityTracker.addPosition(firstDown.uptimeMillis, firstDown.position)
                 val selectedWindow = doorAnchors.minByOrNull { (_, anchor) ->
                     val dx = anchor.x - firstDown.position.x
                     val dy = anchor.y - firstDown.position.y
@@ -169,62 +172,67 @@ fun LauncherVehicleSettingsScreen(
                 var totalPan = Offset.Zero
                 var windowSwipe = false
                 var rotationSwipe = selectedWindow == null
-                do {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val pressedPointers = event.changes.count { it.pressed }
-                    when {
-                        pressedPointers >= 2 -> {
-                            multiTouchSeen = true
-                            windowSwipe = false
-                            rotationSwipe = false
-                            windowFeedback = null
-                            val zoom = event.calculateZoom()
-                            if (zoom.isFinite() && zoom > 0f) {
-                                settingsScale = (settingsScale * zoom).coerceIn(
-                                    SETTINGS_USER_SCALE_MIN,
-                                    SETTINGS_USER_SCALE_MAX,
-                                )
+                try {
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val pressedPointers = event.changes.count { it.pressed }
+                        when {
+                            pressedPointers >= 2 -> {
+                                multiTouchSeen = true
+                                windowSwipe = false
+                                rotationSwipe = false
+                                windowFeedback = null
+                                val zoom = event.calculateZoom()
+                                settingsOrbit.multiplyScale(zoom)
                             }
-                        }
 
-                        pressedPointers == 1 && !multiTouchSeen -> {
-                            val pan = event.calculatePan()
-                            totalPan += pan
-                            if (selectedWindow != null && !windowSwipe && !rotationSwipe) {
-                                if (abs(totalPan.y) > 12f && abs(totalPan.y) > abs(totalPan.x) * 1.2f) {
-                                    windowSwipe = true
-                                } else if (abs(totalPan.x) > 12f && abs(totalPan.x) > abs(totalPan.y) * 1.2f) {
-                                    rotationSwipe = true
-                                    windowFeedback = null
-                                }
-                            }
-                            if (selectedWindow != null && windowSwipe) {
-                                val start = startWindowPercent
-                                    ?: if (totalPan.y >= 0f) 0 else 100
-                                val target = (
-                                    start + totalPan.y / WINDOW_SWIPE_FULL_RANGE_PX * 100f
-                                    ).roundToInt().coerceIn(0, 100)
-                                windowFeedback = WindowGestureFeedback(
-                                    corner = selectedWindow,
-                                    percent = target,
-                                    committed = false,
-                                )
-                            }
-                            if (rotationSwipe) {
-                                settingsYaw = (settingsYaw + pan.x / 4f).let { yaw ->
-                                    when {
-                                        yaw > 3600f || yaw < -3600f -> yaw % 360f
-                                        else -> yaw
+                            pressedPointers == 1 && !multiTouchSeen -> {
+                                val pan = event.calculatePan()
+                                totalPan += pan
+                                event.changes.forEach { change ->
+                                    if (change.pressed) {
+                                        velocityTracker.addPosition(
+                                            change.uptimeMillis,
+                                            change.position,
+                                        )
                                     }
                                 }
+                                if (selectedWindow != null && !windowSwipe && !rotationSwipe) {
+                                    if (abs(totalPan.y) > 12f && abs(totalPan.y) > abs(totalPan.x) * 1.2f) {
+                                        windowSwipe = true
+                                    } else if (abs(totalPan.x) > 12f && abs(totalPan.x) > abs(totalPan.y) * 1.2f) {
+                                        rotationSwipe = true
+                                        windowFeedback = null
+                                    }
+                                }
+                                if (selectedWindow != null && windowSwipe) {
+                                    val start = startWindowPercent
+                                        ?: if (totalPan.y >= 0f) 0 else 100
+                                    val target = (
+                                        start + totalPan.y / WINDOW_SWIPE_FULL_RANGE_PX * 100f
+                                        ).roundToInt().coerceIn(0, 100)
+                                    windowFeedback = WindowGestureFeedback(
+                                        corner = selectedWindow,
+                                        percent = target,
+                                        committed = false,
+                                    )
+                                }
+                                if (rotationSwipe) {
+                                    settingsOrbit.addYaw(pan.x / SETTINGS_YAW_PX_PER_DEG)
+                                }
                             }
                         }
-                    }
 
-                    event.changes.forEach { change ->
-                        if (change.positionChanged()) change.consume()
+                        event.changes.forEach { change ->
+                            if (change.positionChanged()) change.consume()
+                        }
+                    } while (event.changes.any { it.pressed })
+                } finally {
+                    settingsOrbit.endInteraction()
+                    if (rotationSwipe && !multiTouchSeen && !windowSwipe) {
+                        settingsOrbit.applyFlingFromPxVelocity(velocityTracker.calculateVelocity().x)
                     }
-                } while (event.changes.any { it.pressed })
+                }
                 if (
                     selectedWindow != null &&
                     windowSwipe &&
@@ -345,8 +353,7 @@ fun LauncherVehicleSettingsScreen(
                 showRoad = false,
                 settingsView = true,
                 settingsProgress = 1f,
-                settingsUserYawDeg = settingsYaw,
-                settingsUserScale = settingsScale,
+                settingsOrbit = settingsOrbit,
                 onWheelAnchorsChanged = { wheelAnchors = it },
                 onDoorAnchorsChanged = { doorAnchors = it },
                 onBodyRigAvailabilityChanged = { bodyRigAvailable = it },
