@@ -35,6 +35,7 @@ object LauncherDevVehicleState {
     var adasBsdRight by mutableStateOf(LauncherRearThreatLevel.Off)
     /** Lead vehicle distance in metres; 0 = no object. */
     var adasFrontObjectM by mutableFloatStateOf(0f)
+    var adasFrontObjectType by mutableStateOf(LauncherAdasFrontObjectType.Car)
     /** Per-channel parking distances (cm); absent = sensor silent. */
     val pdcChannels = androidx.compose.runtime.mutableStateMapOf<LauncherPdcChannel, Float>()
     var lowBeam by mutableStateOf(false)
@@ -68,6 +69,19 @@ object LauncherDevVehicleState {
         simulateEnabled = true
         motionPreviewEnabled = false
         adasFrontObjectM = metres.coerceIn(0f, 120f)
+    }
+
+    fun selectAdasFrontObjectType(type: LauncherAdasFrontObjectType) {
+        simulateEnabled = true
+        motionPreviewEnabled = false
+        adasCruiseActive = true
+        if (gearSlotOverride != 'D') gearSlotOverride = 'D'
+        if (type == LauncherAdasFrontObjectType.None) {
+            adasFrontObjectM = 0f
+            return
+        }
+        adasFrontObjectType = type
+        if (adasFrontObjectM < 1f) adasFrontObjectM = 35f
     }
 
     /**
@@ -171,7 +185,7 @@ object LauncherDevVehicleState {
             timeGapLevel = if (adasCruiseActive) 1 else null,
             frontObject = LauncherAdasFrontObject(
                 valid = frontM > 0,
-                type = if (frontM > 0) LauncherAdasFrontObjectType.Car else LauncherAdasFrontObjectType.None,
+                type = if (frontM > 0) adasFrontObjectType else LauncherAdasFrontObjectType.None,
                 objectDxM = frontM.takeIf { it > 0 },
                 targetDxM = frontM.takeIf { it > 0 },
             ),
@@ -328,6 +342,7 @@ object LauncherDevVehicleState {
         adasBsdLeft = LauncherRearThreatLevel.Off
         adasBsdRight = LauncherRearThreatLevel.Off
         adasFrontObjectM = 0f
+        adasFrontObjectType = LauncherAdasFrontObjectType.Car
         pdcChannels.clear()
         lowBeam = false
         highBeam = false
@@ -337,3 +352,11 @@ object LauncherDevVehicleState {
 
 /** Selectable gearbox slots for the simulation tab. */
 val SIM_GEAR_SLOTS: List<Char> = listOf('P', 'R', 'N', 'D')
+
+/** Front-object types that have dedicated ADAS lead icons. */
+val SIM_FRONT_OBJECT_TYPES: List<LauncherAdasFrontObjectType> = listOf(
+    LauncherAdasFrontObjectType.Car,
+    LauncherAdasFrontObjectType.Truck,
+    LauncherAdasFrontObjectType.Motorcycle,
+    LauncherAdasFrontObjectType.Pedestrian,
+)

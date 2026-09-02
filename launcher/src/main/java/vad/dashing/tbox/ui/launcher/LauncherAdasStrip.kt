@@ -197,18 +197,6 @@ private fun assistTint(icon: LauncherAdasAssistIcon): Color = when (icon) {
     LauncherAdasAssistIcon.Hidden -> LauncherColors.TextSecondary
 }
 
-private val LauncherAdasFrontObjectType.labelRes: Int
-    get() = when (this) {
-        LauncherAdasFrontObjectType.None -> R.string.launcher_adas_obj_unknown
-        LauncherAdasFrontObjectType.Car -> R.string.launcher_adas_obj_car
-        LauncherAdasFrontObjectType.Truck -> R.string.launcher_adas_obj_truck
-        LauncherAdasFrontObjectType.Motorcycle -> R.string.launcher_adas_obj_moto
-        LauncherAdasFrontObjectType.Pedestrian -> R.string.launcher_adas_obj_pedestrian
-        LauncherAdasFrontObjectType.Bicycle -> R.string.launcher_adas_obj_bicycle
-        LauncherAdasFrontObjectType.Bus -> R.string.launcher_adas_obj_bus
-        LauncherAdasFrontObjectType.Unknown -> R.string.launcher_adas_obj_unknown
-    }
-
 @Composable
 private fun LauncherAdasIcon(
     contentDescription: String,

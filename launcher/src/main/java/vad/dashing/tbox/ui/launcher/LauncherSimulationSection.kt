@@ -216,6 +216,7 @@ fun SimulationSectionCard(
                     unit = "м",
                     onValueChange = { LauncherDevVehicleState.setAdasFrontObject(it) },
                 )
+                SimulationFrontObjectTypeRow()
                 SimulationSliderRow(
                     label = stringResource(R.string.launcher_vs_sim_pdc_front),
                     value = LauncherDevVehicleState.pdcFrontGroupValue(),
@@ -365,6 +366,62 @@ private fun SimulationGearRow(
                             LauncherColors.TextSecondary
                         },
                         fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SimulationFrontObjectTypeRow() {
+    val selected = if (LauncherDevVehicleState.adasFrontObjectM >= 1f) {
+        LauncherDevVehicleState.adasFrontObjectType
+    } else {
+        LauncherAdasFrontObjectType.None
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(LauncherColors.SurfaceDark.copy(alpha = 0.42f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.launcher_vs_sim_front_object_type),
+            color = LauncherColors.TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            SIM_FRONT_OBJECT_TYPES.forEach { type ->
+                val active = selected == type
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (active) SimulationRed else LauncherColors.CardDark)
+                        .clickable {
+                            LauncherDevVehicleState.selectAdasFrontObjectType(
+                                if (active) LauncherAdasFrontObjectType.None else type,
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(type.labelRes),
+                        color = if (active) {
+                            LauncherColors.TextPrimary
+                        } else {
+                            LauncherColors.TextSecondary
+                        },
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                     )
                 }

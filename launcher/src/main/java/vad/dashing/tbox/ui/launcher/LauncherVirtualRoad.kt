@@ -1,5 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -7,8 +9,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
@@ -76,7 +80,8 @@ fun LauncherVirtualRoad(
         }
     }
 
-    val cruiseSprite = rememberRoadSprite(R.drawable.cruise_car_rear)
+    val leadSprites = rememberLeadObjectSprites()
+    val leadVisual = rememberLeadObjectVisual(adas)
     if (driveBlend <= 0.01f) return
     Canvas(
         modifier = modifier
@@ -87,7 +92,8 @@ fun LauncherVirtualRoad(
             roadPhase = roadPhase,
             speedKmh = speedKmh,
             adas = adas,
-            cruiseSprite = cruiseSprite,
+            leadSprites = leadSprites,
+            leadVisual = leadVisual,
         )
     }
 }
@@ -143,6 +149,91 @@ internal class RaceOncomingSprites(
 private fun rememberRoadSprite(id: Int): ImageBitmap {
     val res = LocalContext.current.resources
     return remember(id, res) { ImageBitmap.imageResource(res, id) }
+}
+
+private data class LeadObjectSprites(
+    val car: ImageBitmap,
+    val truck: ImageBitmap,
+    val motorcycle: ImageBitmap,
+    val pedestrian: ImageBitmap,
+) {
+    fun forType(type: LauncherAdasFrontObjectType): ImageBitmap? = when (type) {
+        LauncherAdasFrontObjectType.Car -> car
+        LauncherAdasFrontObjectType.Truck -> truck
+        LauncherAdasFrontObjectType.Motorcycle -> motorcycle
+        LauncherAdasFrontObjectType.Pedestrian -> pedestrian
+        else -> null
+    }
+}
+
+private data class LeadObjectVisual(
+    val type: LauncherAdasFrontObjectType,
+    val distanceM: Int,
+    val alpha: Float,
+)
+
+@Composable
+private fun rememberLeadObjectVisual(adas: LauncherAdasState): LeadObjectVisual? {
+    val targetType = adas.frontObject.takeIf { it.valid }?.type
+        ?.takeUnless { it == LauncherAdasFrontObjectType.None }
+    val targetDistance = adas.frontObject.displayDistanceM
+    var shownType by remember { mutableStateOf(targetType) }
+    var lastDistance by remember { mutableStateOf(targetDistance ?: 35) }
+    val alpha = remember { Animatable(if (targetType != null) 1f else 0f) }
+    val alphaValue by alpha.asState()
+
+    SideEffect {
+        if (targetDistance != null) lastDistance = targetDistance
+    }
+
+    LaunchedEffect(targetType) {
+        val current = shownType
+        when {
+            targetType != null && current == targetType -> {
+                if (alpha.value < 0.999f) {
+                    alpha.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
+                }
+            }
+            targetType != null && current == null -> {
+                shownType = targetType
+                alpha.snapTo(0f)
+                alpha.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+            }
+            targetType != null -> {
+                alpha.animateTo(0f, tween(160, easing = FastOutSlowInEasing))
+                shownType = targetType
+                alpha.snapTo(0f)
+                alpha.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+            }
+            current != null -> {
+                alpha.animateTo(0f, tween(220, easing = FastOutSlowInEasing))
+                shownType = null
+            }
+        }
+    }
+
+    val type = shownType ?: return null
+    if (alphaValue < 0.01f) return null
+    return LeadObjectVisual(type = type, distanceM = lastDistance, alpha = alphaValue)
+}
+
+@Composable
+private fun rememberLeadObjectSprites(): LeadObjectSprites {
+    val dark = LauncherThemeState.darkTheme
+    return LeadObjectSprites(
+        car = rememberRoadSprite(
+            if (dark) R.drawable.ic_adas_lead_car_dark else R.drawable.ic_adas_lead_car,
+        ),
+        truck = rememberRoadSprite(
+            if (dark) R.drawable.ic_adas_lead_truck_dark else R.drawable.ic_adas_lead_truck,
+        ),
+        motorcycle = rememberRoadSprite(
+            if (dark) R.drawable.ic_adas_lead_moto_dark else R.drawable.ic_adas_lead_moto,
+        ),
+        pedestrian = rememberRoadSprite(
+            if (dark) R.drawable.ic_adas_lead_pedestrian_dark else R.drawable.ic_adas_lead_pedestrian,
+        ),
+    )
 }
 
 @Composable
@@ -209,7 +300,8 @@ private fun DrawScope.drawVirtualRoad(
     roadPhase: Float,
     speedKmh: Float,
     adas: LauncherAdasState,
-    cruiseSprite: ImageBitmap,
+    leadSprites: LeadObjectSprites,
+    leadVisual: LeadObjectVisual?,
 ) {
     val w = size.width
     val h = size.height
@@ -274,8 +366,8 @@ private fun DrawScope.drawVirtualRoad(
 
     drawHorizonHaze(horizonY = horizonY, canvasHeight = h)
 
-    val frontDistance = adas.frontObject.displayDistanceM
-    if (adas.frontObject.valid && frontDistance != null) {
+    val frontDistance = leadVisual?.distanceM ?: adas.frontObject.displayDistanceM
+    if (leadVisual != null) {
         if ((adas.accActive || adas.accStandby) && adas.timeGapLevel != null) {
             drawAccBeam(
                 objectDistanceM = frontDistance,
@@ -287,8 +379,10 @@ private fun DrawScope.drawVirtualRoad(
         }
         drawFrontObject(
             adas = adas,
-            distanceM = frontDistance,
-            cruiseSprite = cruiseSprite,
+            type = leadVisual.type,
+            distanceM = leadVisual.distanceM,
+            objectAlpha = leadVisual.alpha,
+            leadSprites = leadSprites,
             centerXAt = ::centerXAt,
             halfWidthAt = ::halfWidthAt,
             yAt = ::yAt,
@@ -475,8 +569,10 @@ private fun DrawScope.drawRaceCars(
 
 private fun DrawScope.drawFrontObject(
     adas: LauncherAdasState,
+    type: LauncherAdasFrontObjectType,
     distanceM: Int,
-    cruiseSprite: ImageBitmap,
+    objectAlpha: Float,
+    leadSprites: LeadObjectSprites,
     centerXAt: (Float) -> Float,
     halfWidthAt: (Float) -> Float,
     yAt: (Float) -> Float,
@@ -487,40 +583,40 @@ private fun DrawScope.drawFrontObject(
     val roadHalf = halfWidthAt(depth)
     val alert = adas.fcwActive || adas.distanceWarning || adas.aebHint || adas.accTakeOver
     val baseColor = if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan
-    val fillColor = baseColor.copy(alpha = if (alert) 0.58f else 0.40f)
-    val strokeColor = baseColor.copy(alpha = 0.92f)
+    val fillColor = baseColor.copy(alpha = (if (alert) 0.58f else 0.40f) * objectAlpha)
+    val strokeColor = baseColor.copy(alpha = 0.92f * objectAlpha)
 
-    val (objW, objH) = objectSizeForType(adas.frontObject.type, roadHalf)
-    var labelLift = objH * 1.35f
-    if (adas.frontObject.type == LauncherAdasFrontObjectType.Car) {
-        val destW = objW * 1.85f
-        val destH = destW * cruiseSprite.height / cruiseSprite.width.toFloat()
+    val sprite = leadSprites.forType(type)
+    var labelLift: Float
+    if (sprite != null) {
+        val destW = leadSpriteWidth(type, roadHalf)
+        val destH = destW * sprite.height / sprite.width.toFloat()
         if (alert) {
             drawOval(
-                color = Color(0xFFEF4444).copy(alpha = 0.32f),
-                topLeft = Offset(cx - destW * 0.52f, cy - destH * 0.10f),
-                size = Size(destW * 1.04f, destH * 0.20f),
+                color = Color(0xFFEF4444).copy(alpha = 0.32f * objectAlpha),
+                topLeft = Offset(cx - destW * 0.52f, cy - destH * 0.08f),
+                size = Size(destW * 1.04f, destH * 0.18f),
             )
         }
         drawRoadCarSprite(
-            image = cruiseSprite,
+            image = sprite,
             cx = cx,
             cy = cy,
             destW = destW,
+            alpha = objectAlpha,
+            ground = 1f,
         )
-        labelLift = destH * 0.95f
-    } else if (!alert) {
-        when (adas.frontObject.type) {
-            LauncherAdasFrontObjectType.Motorcycle ->
-                drawLeadMotorcycleBody(cx = cx, cy = cy, objW = objW * 1.15f, objH = objH * 1.20f)
+        labelLift = destH * 0.98f
+    } else {
+        val (objW, objH) = objectSizeForType(type, roadHalf)
+        labelLift = objH * 1.35f
+        when (type) {
             LauncherAdasFrontObjectType.Bicycle ->
                 drawLeadBicycleBody(cx = cx, cy = cy, objW = objW, objH = objH * 1.10f)
-            LauncherAdasFrontObjectType.Truck ->
-                drawLeadTruckBody(cx = cx, cy = cy, objW = objW * 1.20f, objH = objH * 1.15f)
             LauncherAdasFrontObjectType.Bus ->
                 drawLeadBusBody(cx = cx, cy = cy, objW = objW * 1.15f, objH = objH * 1.20f)
             else -> drawFrontObjectSilhouette(
-                type = adas.frontObject.type,
+                type = type,
                 cx = cx,
                 cy = cy,
                 objW = objW,
@@ -529,22 +625,14 @@ private fun DrawScope.drawFrontObject(
                 stroke = strokeColor,
             )
         }
-    } else {
-        drawFrontObjectSilhouette(
-            type = adas.frontObject.type,
-            cx = cx,
-            cy = cy,
-            objW = objW,
-            objH = objH,
-            fill = fillColor,
-            stroke = strokeColor,
-        )
     }
 
     // Distance label above the vehicle, where the ACC beam ends.
+    val labelColor = (if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan)
+        .copy(alpha = objectAlpha)
     val paint = android.graphics.Paint().apply {
         isAntiAlias = true
-        color = (if (alert) Color(0xFFEF4444) else LauncherColors.AccentCyan).toArgb()
+        color = labelColor.toArgb()
         textAlign = android.graphics.Paint.Align.CENTER
         textSize = (11f + depth * 6f).coerceIn(11f, 15f)
         typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -555,64 +643,6 @@ private fun DrawScope.drawFrontObject(
         cy - labelLift - 4f,
         paint,
     )
-}
-
-/** Motorcycle from behind: rear wheel, tail, rider, mirrors — same language as the lead car. */
-private fun DrawScope.drawLeadMotorcycleBody(cx: Float, cy: Float, objW: Float, objH: Float) {
-    val w = objW
-    val h = objH
-    drawOval(
-        color = Color.Black.copy(alpha = 0.34f),
-        topLeft = Offset(cx - w * 0.38f, cy - h * 0.04f),
-        size = Size(w * 0.76f, h * 0.14f),
-    )
-    val wheelW = w * 0.42f
-    val wheelH = h * 0.22f
-    drawOval(Color(0xFF14161A), Offset(cx - wheelW / 2f, cy - wheelH * 0.55f), Size(wheelW, wheelH))
-    drawOval(
-        Color(0xFF8B919A),
-        Offset(cx - wheelW * 0.22f, cy - wheelH * 0.28f),
-        Size(wheelW * 0.44f, wheelH * 0.44f),
-    )
-    val body = Path().apply {
-        moveTo(cx - w * 0.16f, cy - h * 0.22f)
-        lineTo(cx - w * 0.22f, cy - h * 0.58f)
-        lineTo(cx - w * 0.10f, cy - h * 0.78f)
-        lineTo(cx + w * 0.10f, cy - h * 0.78f)
-        lineTo(cx + w * 0.22f, cy - h * 0.58f)
-        lineTo(cx + w * 0.16f, cy - h * 0.22f)
-        close()
-    }
-    drawPath(
-        path = body,
-        brush = Brush.verticalGradient(
-            0f to Color(0xFFE8ECF2),
-            1f to Color(0xFF6D7580),
-            startY = cy - h * 0.78f,
-            endY = cy - h * 0.18f,
-        ),
-    )
-    drawRoundRect(
-        color = Color(0xFFC43B44),
-        topLeft = Offset(cx - w * 0.18f, cy - h * 0.42f),
-        size = Size(w * 0.36f, h * 0.07f),
-        cornerRadius = CornerRadius(h * 0.03f, h * 0.03f),
-    )
-    drawCircle(Color(0xFF2A3340), radius = w * 0.16f, center = Offset(cx, cy - h * 0.92f))
-    drawCircle(Color(0xFFD7DCE4), radius = w * 0.10f, center = Offset(cx, cy - h * 0.94f))
-    listOf(-1f, 1f).forEach { side ->
-        drawLine(
-            color = Color(0xFFD7DCE4),
-            start = Offset(cx + side * w * 0.10f, cy - h * 0.72f),
-            end = Offset(cx + side * w * 0.38f, cy - h * 0.80f),
-            strokeWidth = 2.4f,
-        )
-        drawCircle(
-            Color(0xFF2A3340),
-            radius = w * 0.055f,
-            center = Offset(cx + side * w * 0.40f, cy - h * 0.82f),
-        )
-    }
 }
 
 private fun DrawScope.drawLeadBicycleBody(cx: Float, cy: Float, objW: Float, objH: Float) {
@@ -640,34 +670,6 @@ private fun DrawScope.drawLeadBicycleBody(cx: Float, cy: Float, objW: Float, obj
         strokeWidth = 2.2f,
     )
     drawCircle(Color(0xFF2A3340), radius = w * 0.13f, center = Offset(cx, cy - h * 0.90f))
-}
-
-private fun DrawScope.drawLeadTruckBody(cx: Float, cy: Float, objW: Float, objH: Float) {
-    val w = objW
-    val h = objH
-    drawOval(
-        color = Color.Black.copy(alpha = 0.32f),
-        topLeft = Offset(cx - w * 0.58f, cy - h * 0.04f),
-        size = Size(w * 1.16f, h * 0.14f),
-    )
-    drawRoundRect(
-        color = Color(0xFF8A9098),
-        topLeft = Offset(cx - w * 0.50f, cy - h * 0.95f),
-        size = Size(w, h * 0.88f),
-        cornerRadius = CornerRadius(w * 0.06f, w * 0.06f),
-    )
-    drawRoundRect(
-        color = Color(0xFF2A3340),
-        topLeft = Offset(cx - w * 0.38f, cy - h * 0.82f),
-        size = Size(w * 0.76f, h * 0.22f),
-        cornerRadius = CornerRadius(4f, 4f),
-    )
-    drawRoundRect(
-        color = Color(0xFFC43B44),
-        topLeft = Offset(cx - w * 0.42f, cy - h * 0.28f),
-        size = Size(w * 0.84f, h * 0.07f),
-        cornerRadius = CornerRadius(h * 0.03f, h * 0.03f),
-    )
 }
 
 private fun DrawScope.drawLeadBusBody(cx: Float, cy: Float, objW: Float, objH: Float) {
@@ -917,6 +919,16 @@ private fun DrawScope.drawSpeedLimitSign(
             cy + radius + 12f,
             cap,
         )
+    }
+}
+
+private fun leadSpriteWidth(type: LauncherAdasFrontObjectType, roadHalf: Float): Float {
+    val base = roadHalf * 0.60f
+    return when (type) {
+        LauncherAdasFrontObjectType.Truck -> base * 1.16f
+        LauncherAdasFrontObjectType.Motorcycle -> roadHalf * 0.57f
+        LauncherAdasFrontObjectType.Pedestrian -> roadHalf * 0.46f
+        else -> base
     }
 }
 

@@ -1,5 +1,7 @@
 package vad.dashing.tbox.ui.launcher
 
+import vad.dashing.tbox.R
+
 /**
  * Decoders for [com.mengbo.mbCan.entity.MBCanVehicleFrmDectInfo] and LKA status,
  * ported from stock `com.mengbo.adascard` / `SignalManager` thresholds.
@@ -32,6 +34,17 @@ enum class LauncherAdasFrontObjectType(val code: Int) {
     Bus(6),
     Unknown(7),
     ;
+
+    val labelRes: Int
+        get() = when (this) {
+            None, Unknown -> R.string.launcher_adas_obj_unknown
+            Car -> R.string.launcher_adas_obj_car
+            Truck -> R.string.launcher_adas_obj_truck
+            Motorcycle -> R.string.launcher_adas_obj_moto
+            Pedestrian -> R.string.launcher_adas_obj_pedestrian
+            Bicycle -> R.string.launcher_adas_obj_bicycle
+            Bus -> R.string.launcher_adas_obj_bus
+        }
 
     companion object {
         fun fromCode(code: Int): LauncherAdasFrontObjectType =

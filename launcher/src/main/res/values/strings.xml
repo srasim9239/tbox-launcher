@@ -359,6 +359,7 @@
     <string name="launcher_vs_sim_threat_caution">Внимание</string>
     <string name="launcher_vs_sim_threat_alert">Тревога</string>
     <string name="launcher_vs_sim_front_object">Объект впереди</string>
+    <string name="launcher_vs_sim_front_object_type">Тип объекта</string>
     <string name="launcher_vs_sim_pdc_front">Парктроник передний</string>
     <string name="launcher_vs_sim_pdc_rear">Парктроник задний</string>
     <string name="launcher_vs_sim_pdc_channels">Датчики поканально</string>
