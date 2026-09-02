@@ -16,6 +16,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -58,16 +61,6 @@ private val SETTINGS_CAMERA_TARGET = Float3(0.12f, 0.18f, 0f)
 private const val HOME_MODEL_SCALE = 0.52f
 // Settings uses the full SceneView bounds; visual size is controlled only here/camera.
 private const val SETTINGS_MODEL_SCALE = 0.48f
-
-/** Per-frame Filament scratch. Must not be Compose snapshot state — writes would recompose SceneView. */
-private class FilamentFrameScratch {
-    var lastFrameNs = 0L
-    var lastAnchorPublishNs = 0L
-    var preparedFrames = 0
-    var renderedScale = 0f
-    var settingsCameraLocked = false
-}
-
 private const val HOME_MODEL_X = 0f
 private const val SETTINGS_MODEL_X = 0.14f
 private const val HOME_MODEL_Y = -0.1f
@@ -203,7 +196,8 @@ private fun LauncherCarFilamentModel(
     val projectPdcRef = rememberUpdatedState(projectPdcRings)
     val projectHeadlightsRef = rememberUpdatedState(projectHeadlights)
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
-    val frameScratch = remember(modelInstance) { FilamentFrameScratch() }
+    var lastFrameNs by remember { mutableLongStateOf(0L) }
+    var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
     val driveTargetCompose = when {
         settingsProgress > 0.02f -> 0f
         inDriveGear || steerPreview -> 1f
@@ -215,6 +209,8 @@ private fun LauncherCarFilamentModel(
         label = "carDriveBlend",
     )
     val driveBlendRef = rememberUpdatedState(composedDriveBlend)
+    var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
+    var renderedScale by remember(modelInstance) { mutableFloatStateOf(0f) }
     var modelReady by remember(modelInstance) { mutableStateOf(false) }
     val modelAlpha by animateFloatAsState(
         targetValue = if (modelReady) 1f else 0f,
@@ -253,14 +249,14 @@ private fun LauncherCarFilamentModel(
 
     if (!lowPowerPreview) {
     LaunchedEffect(surfaceEpoch) {
-        frameScratch.lastFrameNs = 0L
+        lastFrameNs = 0L
         val startedAt = SystemClock.elapsedRealtime()
         while (isActive) {
             delay(800)
             val resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             if (!resumed) continue
             if (LauncherCarSurfaceRecovery.isCovered()) continue
-            val last = frameScratch.lastFrameNs
+            val last = lastFrameNs
             if (last == 0L) {
                 if (SystemClock.elapsedRealtime() - startedAt > 8_000L) {
                     LauncherCarSurfaceRecovery.onFramesStalled(neverStarted = true)
@@ -272,38 +268,30 @@ private fun LauncherCarFilamentModel(
     }
     }
 
-    // Prime the camera once so SceneView does not flash its default view.
-    // After that onFrame owns the camera — repeating lookAt on every recomposition hitchs the swipe.
-    var cameraPrimed by remember(modelInstance) { mutableStateOf(false) }
-    if (!cameraPrimed) {
-        SideEffect {
-            val initialDrivePos = Float3(
-                lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, composedDriveBlend),
-                lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, composedDriveBlend),
-                lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, composedDriveBlend),
-            )
-            val initialDriveTarget = Float3(
-                lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, composedDriveBlend),
-                lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, composedDriveBlend),
-                lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, composedDriveBlend),
-            )
-            cameraNode.worldPosition = Position(
-                lerp(initialDrivePos.x, SETTINGS_CAMERA_POS.x, currentTransition),
-                lerp(initialDrivePos.y, SETTINGS_CAMERA_POS.y, currentTransition),
-                lerp(initialDrivePos.z, SETTINGS_CAMERA_POS.z, currentTransition),
-            )
-            cameraNode.lookAt(
-                Position(
-                    lerp(initialDriveTarget.x, SETTINGS_CAMERA_TARGET.x, currentTransition),
-                    lerp(initialDriveTarget.y, SETTINGS_CAMERA_TARGET.y, currentTransition),
-                    lerp(initialDriveTarget.z, SETTINGS_CAMERA_TARGET.z, currentTransition),
-                ),
-            )
-            cameraPrimed = true
-            if (currentTransition >= 0.99f) {
-                frameScratch.settingsCameraLocked = true
-            }
-        }
+    // SceneView otherwise renders one frame with its default camera before onFrame runs.
+    SideEffect {
+        val initialDrivePos = Float3(
+            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, composedDriveBlend),
+            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, composedDriveBlend),
+            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, composedDriveBlend),
+        )
+        val initialDriveTarget = Float3(
+            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, composedDriveBlend),
+            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, composedDriveBlend),
+            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, composedDriveBlend),
+        )
+        cameraNode.worldPosition = Position(
+            lerp(initialDrivePos.x, SETTINGS_CAMERA_POS.x, currentTransition),
+            lerp(initialDrivePos.y, SETTINGS_CAMERA_POS.y, currentTransition),
+            lerp(initialDrivePos.z, SETTINGS_CAMERA_POS.z, currentTransition),
+        )
+        cameraNode.lookAt(
+            Position(
+                lerp(initialDriveTarget.x, SETTINGS_CAMERA_TARGET.x, currentTransition),
+                lerp(initialDriveTarget.y, SETTINGS_CAMERA_TARGET.y, currentTransition),
+                lerp(initialDriveTarget.z, SETTINGS_CAMERA_TARGET.z, currentTransition),
+            ),
+        )
     }
 
     LaunchedEffect(rigController, animationController) {
@@ -344,72 +332,46 @@ private fun LauncherCarFilamentModel(
                 modelLoader = modelLoader,
                 cameraNode = cameraNode,
                 cameraManipulator = null,
-                // Keep the settings SceneView transparent so the Compose radial
-                // gradient behind the car stays visible.
-                isOpaque = false,
+                isOpaque = lowPowerPreview,
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     val node = modelNodeRef.value ?: return@SceneView
-                    val lastNs = frameScratch.lastFrameNs
-                    val dt = if (lastNs == 0L) {
+                    val dt = if (lastFrameNs == 0L) {
                         0.016f
                     } else {
-                        ((frameNs - lastNs) / 1_000_000_000f).coerceAtMost(0.05f)
+                        ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.05f)
                     }
-                    frameScratch.lastFrameNs = frameNs
+                    lastFrameNs = frameNs
                     if (!lowPowerPreview) {
                         LauncherCarSurfaceRecovery.onFrameObserved()
                     }
 
                     val transition = settingsProgress.coerceIn(0f, 1f)
                     val driveBlend = driveBlendRef.value
-                    val settingsLocked = transition >= 0.99f && driveBlend < 0.02f
-                    if (settingsLocked) {
-                        if (!frameScratch.settingsCameraLocked) {
-                            cameraNode.worldPosition = Position(
-                                SETTINGS_CAMERA_POS.x,
-                                SETTINGS_CAMERA_POS.y,
-                                SETTINGS_CAMERA_POS.z,
-                            )
-                            cameraNode.lookAt(
-                                Position(
-                                    SETTINGS_CAMERA_TARGET.x,
-                                    SETTINGS_CAMERA_TARGET.y,
-                                    SETTINGS_CAMERA_TARGET.z,
-                                ),
-                            )
-                            node.position = Position(
-                                x = SETTINGS_MODEL_X,
-                                y = SETTINGS_MODEL_Y,
-                                z = SETTINGS_MODEL_Z,
-                            )
-                            frameScratch.settingsCameraLocked = true
-                        }
-                    } else {
-                        frameScratch.settingsCameraLocked = false
-                        val drivePos = Float3(
-                            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, driveBlend),
-                            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, driveBlend),
-                            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, driveBlend),
-                        )
-                        val driveTargetPos = Float3(
-                            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, driveBlend),
-                            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, driveBlend),
-                            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, driveBlend),
-                        )
-                        cameraNode.worldPosition = Position(
-                            lerp(drivePos.x, SETTINGS_CAMERA_POS.x, transition),
-                            lerp(drivePos.y, SETTINGS_CAMERA_POS.y, transition),
-                            lerp(drivePos.z, SETTINGS_CAMERA_POS.z, transition),
-                        )
-                        cameraNode.lookAt(
-                            Position(
-                                lerp(driveTargetPos.x, SETTINGS_CAMERA_TARGET.x, transition),
-                                lerp(driveTargetPos.y, SETTINGS_CAMERA_TARGET.y, transition),
-                                lerp(driveTargetPos.z, SETTINGS_CAMERA_TARGET.z, transition),
-                            ),
-                        )
-                    }
+
+                    // Continuous camera morph: top/drive ↔ settings (no body yaw while driving).
+                    val drivePos = Float3(
+                        lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, driveBlend),
+                        lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, driveBlend),
+                        lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, driveBlend),
+                    )
+                    val driveTargetPos = Float3(
+                        lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, driveBlend),
+                        lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, driveBlend),
+                        lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, driveBlend),
+                    )
+                    cameraNode.worldPosition = Position(
+                        lerp(drivePos.x, SETTINGS_CAMERA_POS.x, transition),
+                        lerp(drivePos.y, SETTINGS_CAMERA_POS.y, transition),
+                        lerp(drivePos.z, SETTINGS_CAMERA_POS.z, transition),
+                    )
+                    cameraNode.lookAt(
+                        Position(
+                            lerp(driveTargetPos.x, SETTINGS_CAMERA_TARGET.x, transition),
+                            lerp(driveTargetPos.y, SETTINGS_CAMERA_TARGET.y, transition),
+                            lerp(driveTargetPos.z, SETTINGS_CAMERA_TARGET.z, transition),
+                        ),
+                    )
                     val orbit = settingsOrbitRef.value
                     orbit?.tickFling(dt)
                     val userYaw = orbit?.yawDeg ?: settingsUserYawRef.value
@@ -420,13 +382,11 @@ private fun LauncherCarFilamentModel(
                         transition,
                     )
                     node.rotation = Rotation(y = modelYaw)
-                    if (!settingsLocked) {
-                        node.position = Position(
-                            x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, transition),
-                            y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, transition),
-                            z = lerp(HOME_MODEL_Z, SETTINGS_MODEL_Z, transition),
-                        )
-                    }
+                    node.position = Position(
+                        x = lerp(HOME_MODEL_X, SETTINGS_MODEL_X, transition),
+                        y = lerp(HOME_MODEL_Y, SETTINGS_MODEL_Y, transition),
+                        z = lerp(HOME_MODEL_Z, SETTINGS_MODEL_Z, transition),
+                    )
                     val baseScale = lerp(HOME_MODEL_SCALE, SETTINGS_MODEL_SCALE, transition)
                     val pinchScale = lerp(
                         1f,
@@ -439,28 +399,22 @@ private fun LauncherCarFilamentModel(
                     val targetScale = baseScale * pinchScale
                     node.isVisible = true
                     if (!modelReady) {
-                        frameScratch.renderedScale = targetScale
-                        node.scale = Scale(frameScratch.renderedScale)
-                        frameScratch.preparedFrames++
-                        if (frameScratch.preparedFrames >= 4) {
+                        renderedScale = targetScale
+                        node.scale = Scale(renderedScale)
+                        preparedFrames++
+                        if (preparedFrames >= 4) {
                             modelReady = true
                         }
-                    } else if (orbit?.interacting == true) {
-                        frameScratch.renderedScale = targetScale
-                        node.scale = Scale(frameScratch.renderedScale)
                     } else {
                         val scaleResponse = 1f - kotlin.math.exp(-dt * 8f)
-                        frameScratch.renderedScale +=
-                            (targetScale - frameScratch.renderedScale) * scaleResponse
-                        node.scale = Scale(frameScratch.renderedScale)
+                        renderedScale += (targetScale - renderedScale) * scaleResponse
+                        node.scale = Scale(renderedScale)
                     }
 
                     animationController?.update(rigStateRef.value, dt)
-                    val orbitBusy = orbit?.interacting == true ||
-                        kotlin.math.abs(orbit?.yawVelocityDegPerSec ?: 0f) > SETTINGS_FLING_STOP_DEG_S
                     val publishNs = if (lowPowerPreview) 400_000_000L else 100_000_000L
-                    if (!orbitBusy && frameNs - frameScratch.lastAnchorPublishNs >= publishNs) {
-                        frameScratch.lastAnchorPublishNs = frameNs
+                    if (frameNs - lastAnchorPublishNs >= publishNs) {
+                        lastAnchorPublishNs = frameNs
                         val viewport = cameraNode.viewport
                         val widthPx = viewport?.width ?: 0
                         val heightPx = viewport?.height ?: 0
