@@ -56,7 +56,16 @@ class UpdateViewModel(
     }
 
     fun installPreparedApk() {
-        repository.installPreparedApk()
+        viewModelScope.launch {
+            val info = when (val state = repository.uiState.value) {
+                is UpdateUiState.ReadyToInstall -> state.info
+                else -> repository.peekUpdateInfo()
+            }
+            if (info != null) {
+                runCatching { settingsManager.markAwaitingHuRebootAfterInstall(info.versionCode) }
+            }
+            repository.installPreparedApk()
+        }
     }
 
     fun canInstallPackages(): Boolean = repository.canInstallPackages()

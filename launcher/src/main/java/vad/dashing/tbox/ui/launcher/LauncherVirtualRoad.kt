@@ -33,6 +33,9 @@ import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import vad.dashing.tbox.LauncherWindowState
 import vad.dashing.tbox.R
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -59,10 +62,14 @@ fun LauncherVirtualRoad(
     )
 
     var roadPhase by remember { mutableFloatStateOf(0f) }
+    val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(speedKmh, driveBlend) {
         while (true) {
             withFrameMillis {
-                if (speedKmh > 0.5f && driveBlend > 0.02f) {
+                val resumed = lifecycleOwner.lifecycle.currentState
+                    .isAtLeast(Lifecycle.State.RESUMED)
+                val hidden = LauncherWindowState.hiddenForExternalApp
+                if (resumed && !hidden && speedKmh > 0.5f && driveBlend > 0.02f) {
                     roadPhase += speedKmh * 0.03f
                 }
             }

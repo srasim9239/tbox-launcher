@@ -30,7 +30,25 @@ internal fun LauncherHomeSettingsContent() {
         active = LauncherThemeState.darkTheme,
         onClick = { LauncherThemeState.setDarkTheme(context, !LauncherThemeState.darkTheme) },
     )
+    val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
+        .collectAsStateWithLifecycle()
+    val miniPlayerVisible = remember(context, miniPlayerRevision) {
+        LauncherAppConfigStore.mediaMiniPlayerVisible(context)
+    }
+    LauncherSettingsToggleRow(
+        label = stringResource(R.string.launcher_media_mini_player_title),
+        active = miniPlayerVisible,
+        onClick = {
+            LauncherAppConfigStore.setMediaMiniPlayerVisible(context, !miniPlayerVisible)
+        },
+    )
+    Text(
+        text = stringResource(R.string.launcher_media_mini_player_desc),
+        color = LauncherColors.TextMuted,
+        fontSize = 12.sp,
+    )
     MediaCardOpacitySlider()
+    DockIconScaleSlider()
     CruisePresetsSettings()
 }
 
@@ -69,6 +87,50 @@ private fun MediaCardOpacitySlider() {
                 LauncherAppConfigStore.setMediaCardAlpha(context, next)
             },
             valueRange = MEDIA_CARD_ALPHA_MIN..MEDIA_CARD_ALPHA_MAX,
+            colors = SliderDefaults.colors(
+                thumbColor = LauncherColors.AccentCyan,
+                activeTrackColor = LauncherColors.AccentCyan,
+                inactiveTrackColor = LauncherColors.TextMuted,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun DockIconScaleSlider() {
+    val context = LocalContext.current
+    var scale by remember {
+        mutableFloatStateOf(LauncherAppConfigStore.dockIconScale(context))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.launcher_dock_icon_scale_title),
+                color = LauncherColors.TextPrimary,
+                fontSize = 16.sp,
+            )
+            Text(
+                text = "${(scale * 100f).roundToInt()}%",
+                color = LauncherColors.TextSecondary,
+                fontSize = 16.sp,
+            )
+        }
+        Text(
+            text = stringResource(R.string.launcher_dock_icon_scale_desc),
+            color = LauncherColors.TextMuted,
+            fontSize = 12.sp,
+        )
+        Slider(
+            value = scale,
+            onValueChange = { next ->
+                scale = next
+                LauncherAppConfigStore.setDockIconScale(context, next)
+            },
+            valueRange = DOCK_ICON_SCALE_MIN..DOCK_ICON_SCALE_MAX,
             colors = SliderDefaults.colors(
                 thumbColor = LauncherColors.AccentCyan,
                 activeTrackColor = LauncherColors.AccentCyan,

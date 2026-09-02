@@ -35,7 +35,7 @@ import vad.dashing.tbox.R
 import vad.dashing.tbox.ui.theme.tboxCaption
 
 private val CruiseChipWidth = 76.dp
-private val CruiseChipHeight = 52.dp
+private val CruiseChipHeight = 62.dp
 private val CruiseChipGap = 8.dp
 
 @Composable
@@ -89,7 +89,7 @@ fun LauncherCruisePresetControl(
         }
         if (expanded) {
             Popup(
-                alignment = Alignment.CenterEnd,
+                alignment = Alignment.CenterStart,
                 onDismissRequest = { expanded = false },
                 properties = PopupProperties(focusable = true, clippingEnabled = false),
             ) {
@@ -97,6 +97,11 @@ fun LauncherCruisePresetControl(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(CruiseChipGap),
                 ) {
+                    Spacer(
+                        modifier = Modifier
+                            .size(width = CruiseChipWidth, height = CruiseChipHeight)
+                            .clickable { expanded = false },
+                    )
                     presets.forEach { kmh ->
                         CruisePresetChip(
                             label = kmh.toString(),
@@ -107,11 +112,6 @@ fun LauncherCruisePresetControl(
                             },
                         )
                     }
-                    Spacer(
-                        modifier = Modifier
-                            .size(width = CruiseChipWidth, height = CruiseChipHeight)
-                            .clickable { expanded = false },
-                    )
                 }
             }
         }

@@ -3,6 +3,10 @@
     <string name="launcher_standalone_app_name">Dashing Club Launcher</string>
     <string name="launcher_standalone_about_title">О лаунчере</string>
     <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME-лаунчер для Jetour Dashing.\nOTA.</string>
+    <string name="update_reboot_hu_title">Перезагрузить ГУ?</string>
+    <string name="update_reboot_hu_body"></string>
+    <string name="update_reboot_hu_later">Позже</string>
+    <string name="update_reboot_hu_unavailable">Перезагрузка ГУ доступна на Android 9 (mbCAN).</string>
     <string name="launcher_standalone_service_running">Сервис лаунчера</string>
     <string name="launcher_update_install_permission_hint">Для установки APK разрешите установку приложений из неизвестных источников для Dashing Club Launcher в настройках Android.</string>
     <string name="app_name_monitor">TBox Monitor</string>
@@ -192,6 +196,10 @@
     <string name="launcher_media_bind_player">Привязать плеер</string>
     <string name="launcher_media_card_opacity_title">Непрозрачность плеера</string>
     <string name="launcher_media_card_opacity_desc">Чем ниже, тем сильнее просвечивает дорога</string>
+    <string name="launcher_media_mini_player_title">Виджет плеера</string>
+    <string name="launcher_media_mini_player_desc">Мини-плеер под машиной на левой панели</string>
+    <string name="launcher_dock_icon_scale_title">Размер кнопок нижней панели</string>
+    <string name="launcher_dock_icon_scale_desc">Иконки крупнее и дальше друг от друга, высота панели не меняется</string>
     <string name="launcher_split_add_preset">Добавить пресет</string>
     <string name="launcher_split_new_preset">Новый пресет</string>
     <string name="launcher_split_edit_preset">Пресет сплита</string>

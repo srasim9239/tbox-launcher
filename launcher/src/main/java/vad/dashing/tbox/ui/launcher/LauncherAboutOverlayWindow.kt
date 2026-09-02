@@ -90,9 +90,10 @@ internal object LauncherAboutOverlayWindow {
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
 
+        val settingsManager = SettingsManager(activity)
         val updateViewModel = ViewModelProvider(
             activity,
-            UpdateViewModelFactory(activity.application, SettingsManager(activity)),
+            UpdateViewModelFactory(activity.application, settingsManager),
         )[UpdateViewModel::class.java]
 
         val view = ComposeView(activity).apply {
@@ -127,6 +128,7 @@ internal object LauncherAboutOverlayWindow {
                     ) {
                         LauncherSettingsScreen(
                             updateViewModel = updateViewModel,
+                            settingsManager = settingsManager,
                             onOpenInstallPermissionSettings = {
                                 launchSystemSettingsInFreeform(
                                     activity,

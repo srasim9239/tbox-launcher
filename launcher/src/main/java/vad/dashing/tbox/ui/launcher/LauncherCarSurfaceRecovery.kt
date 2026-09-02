@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import vad.dashing.tbox.BuildConfig
+import vad.dashing.tbox.LauncherWindowState
 
 /**
  * Remounts the home Filament [io.github.sceneview.SceneView] after a GPU-heavy
@@ -16,11 +17,14 @@ import vad.dashing.tbox.BuildConfig
 internal object LauncherCarSurfaceRecovery {
     private const val TAG = "LauncherCar3D"
     private const val MIN_RECOVER_INTERVAL_MS = 2_500L
+    private const val COLD_START_GRACE_MS = 12_000L
 
     private val coveringPackages = setOf(
         "com.mengbo.avm",
         "com.mengbo.avmconfig",
     )
+
+    private val processStartedAtMs = SystemClock.elapsedRealtime()
 
     private val _epoch = MutableStateFlow(0)
     val epoch: StateFlow<Int> = _epoch.asStateFlow()
@@ -35,8 +39,12 @@ internal object LauncherCarSurfaceRecovery {
     fun isCoveringPackage(packageName: String): Boolean {
         val pkg = packageName.lowercase()
         if (pkg in coveringPackages) return true
-        return pkg.contains(".avm") || pkg.endsWith("avm")
+        return pkg.contains(".avm") || pkg.endsWith("avm") ||
+            pkg.contains("park") && pkg.contains("cam")
     }
+
+    fun isCovered(): Boolean =
+        coveredBy != null || LauncherWindowState.hiddenForExternalApp
 
     fun onWindowPackage(packageName: String) {
         if (packageName.isBlank()) return
@@ -60,6 +68,7 @@ internal object LauncherCarSurfaceRecovery {
 
     fun onHomeResumed() {
         awaitFirstFrame = true
+        if (LauncherWindowState.hiddenForExternalApp) return
         val cover = coveredBy ?: return
         coveredBy = null
         recover("resume after $cover")
@@ -70,11 +79,21 @@ internal object LauncherCarSurfaceRecovery {
     }
 
     fun onFramesStalled(neverStarted: Boolean = false) {
+        if (isCovered()) return
+        if (neverStarted &&
+            SystemClock.elapsedRealtime() - processStartedAtMs < COLD_START_GRACE_MS
+        ) {
+            return
+        }
         if (!neverStarted && awaitFirstFrame) return
         recover(if (neverStarted) "frames never started" else "frames stalled")
     }
 
     private fun recover(reason: String) {
+        if (isCovered()) {
+            Log.w(TAG, "recover skipped (covered) reason=$reason")
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastRecoverAtMs < MIN_RECOVER_INTERVAL_MS) {
             Log.w(TAG, "recover skipped (throttle) reason=$reason")

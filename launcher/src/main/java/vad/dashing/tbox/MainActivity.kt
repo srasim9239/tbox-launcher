@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
             TboxAppTheme(theme = 2) {
                 LauncherSettingsScreen(
                     updateViewModel = updateViewModel,
+                    settingsManager = settingsManager,
                     onOpenInstallPermissionSettings = {
                         startActivity(
                             InstallPermissionHelper.createUnknownSourcesSettingsIntent(this),

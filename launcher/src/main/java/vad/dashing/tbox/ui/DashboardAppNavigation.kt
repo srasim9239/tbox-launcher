@@ -512,6 +512,14 @@ internal fun sendSetMbCanProperty(context: Context, propertyId: Int, value: Int)
     }
 }
 
+internal fun requestHeadUnitReboot(context: Context) {
+    sendSetMbCanProperty(
+        context,
+        MbCanKnownVehiclePropertyId.SYSTEM_REBOOT,
+        MbCanKnownVehiclePropertyId.SYSTEM_REBOOT_VALUE,
+    )
+}
+
 internal fun sendToggleMbCanProperty(context: Context, propertyId: Int) {
     try {
         context.startService(

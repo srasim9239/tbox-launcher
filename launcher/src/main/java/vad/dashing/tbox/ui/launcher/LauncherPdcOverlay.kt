@@ -267,11 +267,12 @@ private fun DrawScope.drawBsdDiagonals(
 ) {
     val px = maxOf(frame.pxPerMeterRear, frame.pxPerMeterFront)
     // World angle: 0° nose, 90° left, 180° tail, 270° right.
-    // Sit on the rear quarters (half the previous side-diagonal sweep).
+    // Sit on the rear quarters. Visual left/right of the body is mirrored vs the
+    // OEM getLeftSts/getRightSts mapping, so left threat lights the 196° slice.
     val sweep = 26f
     listOf(
-        threats.bsdLeft to 138f,
-        threats.bsdRight to 196f,
+        threats.bsdLeft to 196f,
+        threats.bsdRight to 138f,
     ).forEach { (level, startDeg) ->
         if (level == LauncherRearThreatLevel.Off) return@forEach
         val pdcLevel = when (level) {

@@ -5,10 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.io.File
@@ -49,6 +51,16 @@ class SettingsManager(private val context: Context) {
         private val KEY_ICON_REVISION = intPreferencesKey("launcher_app_icon_revision")
         private val KEY_UPDATE_CHANNEL = stringPreferencesKey("update_channel")
         private val KEY_UPDATE_CHECK_ENABLED = booleanPreferencesKey("update_check_enabled")
+        private val KEY_HU_REBOOT_LAST_SEEN_VERSION =
+            longPreferencesKey("hu_reboot_last_seen_version")
+        private val KEY_HU_REBOOT_PENDING_VERSION =
+            longPreferencesKey("hu_reboot_pending_version")
+        private val KEY_HU_REBOOT_UPGRADE_ELAPSED =
+            longPreferencesKey("hu_reboot_upgrade_elapsed")
+        private val KEY_HU_REBOOT_PROMPT_SHOWN_VERSION =
+            longPreferencesKey("hu_reboot_prompt_shown_version")
+        private val KEY_HU_REBOOT_AWAITING_INSTALL_VERSION =
+            longPreferencesKey("hu_reboot_awaiting_install_version")
         private const val MAX_ICON_EDGE_PX = 512
     }
 
@@ -74,6 +86,9 @@ class SettingsManager(private val context: Context) {
     val updateCheckEnabledFlow: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
         prefs[KEY_UPDATE_CHECK_ENABLED] ?: true
     }
+
+    val huRebootAfterUpdateFlow: Flow<HuRebootAfterUpdateSnapshot> =
+        context.settingsDataStore.data.map { huRebootSnapshotFrom(it) }
 
     suspend fun saveHeadUnitCanMode(mode: HeadUnitCanMode) {
         context.settingsDataStore.edit { it[KEY_HEAD_UNIT_CAN] = mode.storageValue }
@@ -104,6 +119,82 @@ class SettingsManager(private val context: Context) {
 
     suspend fun saveUpdateCheckEnabled(enabled: Boolean) {
         context.settingsDataStore.edit { it[KEY_UPDATE_CHECK_ENABLED] = enabled }
+    }
+
+    suspend fun syncHuRebootAfterUpdate(
+        currentVersionCode: Long,
+        elapsedRealtimeMs: Long,
+        lastUpdateTimeMs: Long,
+        firstInstallTimeMs: Long,
+        nowWallClockMs: Long,
+    ) {
+        context.settingsDataStore.edit { prefs ->
+            val step = HuRebootAfterUpdate.onAppStart(
+                currentVersionCode = currentVersionCode,
+                elapsedRealtimeMs = elapsedRealtimeMs,
+                lastUpdateTimeMs = lastUpdateTimeMs,
+                firstInstallTimeMs = firstInstallTimeMs,
+                nowWallClockMs = nowWallClockMs,
+                previous = huRebootSnapshotFrom(prefs),
+            )
+            writeHuRebootSnapshot(prefs, step.snapshot)
+        }
+    }
+
+    suspend fun markAwaitingHuRebootAfterInstall(installVersionCode: Long) {
+        context.settingsDataStore.edit { prefs ->
+            writeHuRebootSnapshot(
+                prefs,
+                HuRebootAfterUpdate.markAwaitingInstall(
+                    huRebootSnapshotFrom(prefs),
+                    installVersionCode,
+                ),
+            )
+        }
+    }
+
+    suspend fun markHuRebootStartupPromptShown(currentVersionCode: Long) {
+        context.settingsDataStore.edit { prefs ->
+            writeHuRebootSnapshot(
+                prefs,
+                HuRebootAfterUpdate.markStartupPromptShown(
+                    huRebootSnapshotFrom(prefs),
+                    currentVersionCode,
+                ),
+            )
+        }
+    }
+
+    suspend fun markHuRebootedAfterUpdate(currentVersionCode: Long) {
+        context.settingsDataStore.edit { prefs ->
+            writeHuRebootSnapshot(
+                prefs,
+                HuRebootAfterUpdate.markRebooted(
+                    huRebootSnapshotFrom(prefs),
+                    currentVersionCode,
+                ),
+            )
+        }
+    }
+
+    private fun huRebootSnapshotFrom(prefs: Preferences): HuRebootAfterUpdateSnapshot =
+        HuRebootAfterUpdateSnapshot(
+            lastSeenVersionCode = prefs[KEY_HU_REBOOT_LAST_SEEN_VERSION] ?: 0L,
+            pendingRebootVersionCode = prefs[KEY_HU_REBOOT_PENDING_VERSION] ?: 0L,
+            upgradeDetectedElapsedMs = prefs[KEY_HU_REBOOT_UPGRADE_ELAPSED] ?: 0L,
+            startupPromptShownForVersion = prefs[KEY_HU_REBOOT_PROMPT_SHOWN_VERSION] ?: 0L,
+            awaitingInstallVersionCode = prefs[KEY_HU_REBOOT_AWAITING_INSTALL_VERSION] ?: 0L,
+        )
+
+    private fun writeHuRebootSnapshot(
+        prefs: MutablePreferences,
+        snapshot: HuRebootAfterUpdateSnapshot,
+    ) {
+        prefs[KEY_HU_REBOOT_LAST_SEEN_VERSION] = snapshot.lastSeenVersionCode
+        prefs[KEY_HU_REBOOT_PENDING_VERSION] = snapshot.pendingRebootVersionCode
+        prefs[KEY_HU_REBOOT_UPGRADE_ELAPSED] = snapshot.upgradeDetectedElapsedMs
+        prefs[KEY_HU_REBOOT_PROMPT_SHOWN_VERSION] = snapshot.startupPromptShownForVersion
+        prefs[KEY_HU_REBOOT_AWAITING_INSTALL_VERSION] = snapshot.awaitingInstallVersionCode
     }
 
     suspend fun launcherAppIconLookup(): LauncherAppIconPaths.Lookup =

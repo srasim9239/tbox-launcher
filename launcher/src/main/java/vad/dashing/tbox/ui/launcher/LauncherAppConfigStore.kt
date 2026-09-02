@@ -13,10 +13,16 @@ private const val KEY_DOCK = "dock_packages"
 private const val KEY_CAR_PAINT = "car_paint_id"
 private const val KEY_DEFAULT_MEDIA = "default_media_package"
 private const val KEY_MEDIA_CARD_ALPHA = "media_card_alpha"
+private const val KEY_MEDIA_MINI_PLAYER_VISIBLE = "media_mini_player_visible"
+private const val KEY_DOCK_ICON_SCALE = "dock_icon_scale"
+private const val KEY_FUEL_SHOWS_RANGE = "fuel_shows_range"
 private const val KEY_FULLSCREEN = "fullscreen_packages"
 internal const val MEDIA_CARD_ALPHA_DEFAULT = 0.88f
 internal const val MEDIA_CARD_ALPHA_MIN = 0.40f
 internal const val MEDIA_CARD_ALPHA_MAX = 1.00f
+internal const val DOCK_ICON_SCALE_DEFAULT = 1.00f
+internal const val DOCK_ICON_SCALE_MIN = 1.00f
+internal const val DOCK_ICON_SCALE_MAX = 1.45f
 internal val CRUISE_PRESET_DEFAULTS_KMH = listOf(110, 80, 60)
 internal const val CRUISE_PRESET_MIN_KMH = 30
 internal const val CRUISE_PRESET_MAX_KMH = 160
@@ -36,6 +42,10 @@ internal object LauncherAppConfigStore {
 
     private val mediaCardAlphaRevision = MutableStateFlow(0)
     internal val mediaCardAlphaRevisionFlow: StateFlow<Int> = mediaCardAlphaRevision
+    private val mediaMiniPlayerRevision = MutableStateFlow(0)
+    internal val mediaMiniPlayerRevisionFlow: StateFlow<Int> = mediaMiniPlayerRevision
+    private val dockIconScaleRevision = MutableStateFlow(0)
+    internal val dockIconScaleRevisionFlow: StateFlow<Int> = dockIconScaleRevision
     private val cruisePresetsRevision = MutableStateFlow(0)
     internal val cruisePresetsRevisionFlow: StateFlow<Int> = cruisePresetsRevision
 
@@ -66,6 +76,31 @@ internal object LauncherAppConfigStore {
         val next = alpha.coerceIn(MEDIA_CARD_ALPHA_MIN, MEDIA_CARD_ALPHA_MAX)
         prefs(context).edit().putFloat(KEY_MEDIA_CARD_ALPHA, next).apply()
         mediaCardAlphaRevision.value++
+    }
+
+    fun mediaMiniPlayerVisible(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_MEDIA_MINI_PLAYER_VISIBLE, true)
+
+    fun setMediaMiniPlayerVisible(context: Context, visible: Boolean) {
+        prefs(context).edit().putBoolean(KEY_MEDIA_MINI_PLAYER_VISIBLE, visible).apply()
+        mediaMiniPlayerRevision.value++
+    }
+
+    fun dockIconScale(context: Context): Float =
+        prefs(context).getFloat(KEY_DOCK_ICON_SCALE, DOCK_ICON_SCALE_DEFAULT)
+            .coerceIn(DOCK_ICON_SCALE_MIN, DOCK_ICON_SCALE_MAX)
+
+    fun setDockIconScale(context: Context, scale: Float) {
+        val next = scale.coerceIn(DOCK_ICON_SCALE_MIN, DOCK_ICON_SCALE_MAX)
+        prefs(context).edit().putFloat(KEY_DOCK_ICON_SCALE, next).apply()
+        dockIconScaleRevision.value++
+    }
+
+    fun fuelShowsRange(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_FUEL_SHOWS_RANGE, false)
+
+    fun setFuelShowsRange(context: Context, showRange: Boolean) {
+        prefs(context).edit().putBoolean(KEY_FUEL_SHOWS_RANGE, showRange).apply()
     }
 
     fun cruisePresetsKmh(context: Context): List<Int> {

@@ -24,12 +24,13 @@ fun resolveActiveGearSlot(gearBoxMode: String, gearBoxCurrentGear: Int?): Char? 
     val mode = gearBoxMode.uppercase()
     // Mode letter wins. currentGear==0 while in D is "stopped in drive", not Park —
     // treating it as P snapped the 3D camera to top-down with the road still in drive.
+    // "N/A" must not match Neutral (`contains('N')`).
     return when {
         mode.contains('R') -> 'R'
-        mode.contains('N') -> 'N'
+        mode == "N" || mode.startsWith("N ") -> 'N'
         mode.contains('D') -> 'D'
-        mode.contains('P') -> 'P'
-        gearBoxCurrentGear == 0 -> 'P'
+        mode.contains('P') && !mode.contains("N/A") -> 'P'
+        gearBoxCurrentGear == 0 -> null
         gearBoxCurrentGear != null && gearBoxCurrentGear > 0 -> 'D'
         else -> null
     }

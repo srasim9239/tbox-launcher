@@ -25,8 +25,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -82,6 +85,11 @@ private val HvacOffColor = LauncherColors.TextSecondary
 private const val LAUNCHER_BOTTOM_BAR_CAN_SOURCE = "launcher-bottom-bar"
 private const val SEAT_COMMAND_CONFIRM_TIMEOUT_MS = 2_500L
 private const val LIGHT_COMMAND_CONFIRM_TIMEOUT_MS = 1_200L
+
+private val LocalDockIconScale = compositionLocalOf { 1f }
+
+@Composable
+private fun dockDp(base: Float) = (base * LocalDockIconScale.current).dp
 
 internal data class LauncherPendingSeatCommand(
     val raw: Int,
@@ -191,10 +199,18 @@ fun LauncherBottomBar(
         vehicleControls.lightControlRaw?.let { lightControlRaw = it }
     }
 
+    val dockScaleRevision by LauncherAppConfigStore.dockIconScaleRevisionFlow
+        .collectAsStateWithLifecycle()
+    val dockScale = remember(context, dockScaleRevision) {
+        LauncherAppConfigStore.dockIconScale(context)
+    }
+
+    CompositionLocalProvider(LocalDockIconScale provides dockScale) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(72.dp)
+            .clipToBounds()
             .onGloballyPositioned { coordinates ->
                 val rect = coordinates.boundsInWindow()
                 LauncherEmbeddedBoundsState.bottomBarTopPx = rect.top.toInt()
@@ -204,7 +220,7 @@ fun LauncherBottomBar(
     ) {
         Row(
             modifier = Modifier.align(Alignment.CenterStart),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(dockDp(4f)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LauncherDockIcon(
@@ -243,7 +259,7 @@ fun LauncherBottomBar(
         Row(
             modifier = Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(dockDp(6f)),
         ) {
             LauncherDockIcon(onClick = { sendToggleHvacAirRecirculation(context) }) {
                 LauncherHvacIcon(R.drawable.ic_widget_hvac_air_recirculation, hvacRecirc)
@@ -342,7 +358,7 @@ fun LauncherBottomBar(
 
         Row(
             modifier = Modifier.align(Alignment.CenterEnd),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(dockDp(6f)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LauncherDockIcon(onClick = { sendToggleSteeringWheelHeat(context) }) {
@@ -377,7 +393,7 @@ fun LauncherBottomBar(
                 Image(
                     painter = painterResource(R.drawable.ic_launcher_trunk),
                     contentDescription = stringResource(R.string.launcher_trunk_long_press_cd),
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(dockDp(24f)),
                     colorFilter = ColorFilter.tint(LauncherColors.TextSecondary),
                 )
             }
@@ -388,6 +404,7 @@ fun LauncherBottomBar(
                 Icon(Icons.Filled.Menu, stringResource(R.string.launcher_footer_apps), tint = LauncherColors.TextPrimary)
             }
         }
+    }
     }
 }
 
@@ -406,7 +423,7 @@ private fun LauncherTempStepper(
                 Icons.Filled.KeyboardArrowDown,
                 null,
                 tint = LauncherColors.TextSecondary,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(dockDp(22f)),
             )
         }
         Text(
@@ -422,7 +439,7 @@ private fun LauncherTempStepper(
                 Icons.Filled.KeyboardArrowUp,
                 null,
                 tint = LauncherColors.TextSecondary,
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(dockDp(22f)),
             )
         }
     }
@@ -438,7 +455,7 @@ private fun LauncherHvacIcon(drawableRes: Int, state: MbCanBinaryState) {
     Image(
         painter = painterResource(drawableRes),
         contentDescription = null,
-        modifier = Modifier.size(26.dp),
+        modifier = Modifier.size(dockDp(26f)),
         colorFilter = ColorFilter.tint(tint),
     )
 }
@@ -450,11 +467,11 @@ private fun LauncherSeatModeIcon(
     level: Int,
     onColor: Color,
 ) {
-    Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(drawableRes),
             contentDescription = null,
-            modifier = Modifier.size(26.dp),
+            modifier = Modifier.size(dockDp(26f)),
             colorFilter = ColorFilter.tint(if (active) onColor else HvacOffColor),
         )
         if (level > 0) {
@@ -480,12 +497,12 @@ private fun LauncherSeatModeIcon(
 @Composable
 private fun LauncherSeatHeatIcon(raw: Int, mirrored: Boolean = false) {
     val level = heatLevel(raw)
-    Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(R.drawable.ic_widget_seat),
             contentDescription = null,
             modifier = Modifier
-                .size(26.dp)
+                .size(dockDp(26f))
                 .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
             colorFilter = ColorFilter.tint(if (level > 0) SeatHeatOnColor else HvacOffColor),
         )
@@ -498,7 +515,7 @@ private fun LauncherSeatHeatIcon(raw: Int, mirrored: Boolean = false) {
                 painter = painterResource(drawable),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(dockDp(26f))
                     .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                 colorFilter = ColorFilter.tint(if (enabled) SeatHeatOnColor else HvacOffColor),
             )
@@ -509,12 +526,12 @@ private fun LauncherSeatHeatIcon(raw: Int, mirrored: Boolean = false) {
 @Composable
 private fun LauncherSeatVentIcon(raw: Int, mirrored: Boolean = false) {
     val level = ventLevel(raw)
-    Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(R.drawable.ic_widget_seat),
             contentDescription = null,
             modifier = Modifier
-                .size(26.dp)
+                .size(dockDp(26f))
                 .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
             colorFilter = ColorFilter.tint(if (level > 0) HvacOnColor else HvacOffColor),
         )
@@ -528,7 +545,7 @@ private fun LauncherSeatVentIcon(raw: Int, mirrored: Boolean = false) {
                 painter = painterResource(drawable),
                 contentDescription = null,
                 modifier = Modifier
-                    .size(26.dp)
+                    .size(dockDp(26f))
                     .then(if (mirrored) Modifier.scale(scaleX = -1f, scaleY = 1f) else Modifier),
                 colorFilter = ColorFilter.tint(if (enabled) HvacOnColor else HvacOffColor),
             )
@@ -541,7 +558,7 @@ private fun LauncherBinaryTintIcon(drawableRes: Int, active: Boolean) {
     Image(
         painter = painterResource(drawableRes),
         contentDescription = null,
-        modifier = Modifier.size(26.dp),
+        modifier = Modifier.size(dockDp(26f)),
         colorFilter = ColorFilter.tint(if (active) HvacOnColor else HvacOffColor),
     )
 }
@@ -555,11 +572,11 @@ private fun LauncherHeadlightsModeIcon(raw: Int) {
         LIGHT_CONTROL_AUTO -> "A"
         else -> "0"
     }
-    Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(dockDp(30f)), contentAlignment = Alignment.Center) {
         Image(
             painter = painterResource(R.drawable.ic_widget_headlights),
             contentDescription = stringResource(R.string.launcher_vs_headlights),
-            modifier = Modifier.size(27.dp),
+            modifier = Modifier.size(dockDp(27f)),
             colorFilter = ColorFilter.tint(if (active) HvacOnColor else HvacOffColor),
         )
         Text(
@@ -644,7 +661,7 @@ private fun LauncherDockIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(dockDp(44f))
             .clip(RoundedCornerShape(12.dp))
             .background(LauncherColors.CardDark)
             .then(

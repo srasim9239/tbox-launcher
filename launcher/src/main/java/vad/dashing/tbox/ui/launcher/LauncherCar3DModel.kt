@@ -140,6 +140,7 @@ fun LauncherCar3DModel(
             projectPdcRings = projectPdcRings,
             projectHeadlights = projectHeadlights,
             textureSurface = textureSurface,
+            lowPowerPreview = settingsView || settingsProgress > 0.5f,
         )
         if (onClick != null || onLongClick != null) {
             Box(
@@ -172,6 +173,7 @@ private fun LauncherCarFilamentModel(
     projectPdcRings: Boolean,
     projectHeadlights: Boolean,
     textureSurface: Boolean = false,
+    lowPowerPreview: Boolean = false,
 ) {
     val engine = rememberEngine()
     val modelLoader = rememberModelLoader(engine)
@@ -179,7 +181,6 @@ private fun LauncherCarFilamentModel(
     val modelInstance = rememberModelInstance(modelLoader, LAUNCHER_CAR_MODEL_ASSET)
     val currentTransition = settingsProgress.coerceIn(0f, 1f)
 
-    val inDriveRef = rememberUpdatedState(inDriveGear)
     val rigStateRef = rememberUpdatedState(
         rigState.copy(speedKmh = speedKmh, steeringDeg = steeringDeg),
     )
@@ -195,9 +196,17 @@ private fun LauncherCarFilamentModel(
     val overlayPublishHandler = remember { Handler(Looper.getMainLooper()) }
     var lastFrameNs by remember { mutableLongStateOf(0L) }
     var lastAnchorPublishNs by remember { mutableLongStateOf(0L) }
-    var driveBlend by remember {
-        mutableFloatStateOf(if (inDriveGear || steerPreview) 1f else 0f)
+    val driveTargetCompose = when {
+        settingsProgress > 0.02f -> 0f
+        inDriveGear || steerPreview -> 1f
+        else -> 0f
     }
+    val composedDriveBlend by animateFloatAsState(
+        targetValue = driveTargetCompose,
+        animationSpec = tween(280),
+        label = "carDriveBlend",
+    )
+    val driveBlendRef = rememberUpdatedState(composedDriveBlend)
     var preparedFrames by remember(modelInstance) { mutableIntStateOf(0) }
     var renderedScale by remember(modelInstance) { mutableFloatStateOf(0f) }
     var modelReady by remember(modelInstance) { mutableStateOf(false) }
@@ -218,7 +227,10 @@ private fun LauncherCarFilamentModel(
     val lifecycleOwner = LocalLifecycleOwner.current
     val surfaceEpoch by LauncherCarSurfaceRecovery.epoch.collectAsStateWithLifecycle()
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, lowPowerPreview) {
+        if (lowPowerPreview) {
+            return@DisposableEffect onDispose { overlayPublishHandler.removeCallbacksAndMessages(null) }
+        }
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> LauncherCarSurfaceRecovery.onHomePaused()
@@ -233,6 +245,7 @@ private fun LauncherCarFilamentModel(
         }
     }
 
+    if (!lowPowerPreview) {
     LaunchedEffect(surfaceEpoch) {
         lastFrameNs = 0L
         val startedAt = SystemClock.elapsedRealtime()
@@ -240,9 +253,10 @@ private fun LauncherCarFilamentModel(
             delay(800)
             val resumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
             if (!resumed) continue
+            if (LauncherCarSurfaceRecovery.isCovered()) continue
             val last = lastFrameNs
             if (last == 0L) {
-                if (SystemClock.elapsedRealtime() - startedAt > 4_000L) {
+                if (SystemClock.elapsedRealtime() - startedAt > 8_000L) {
                     LauncherCarSurfaceRecovery.onFramesStalled(neverStarted = true)
                 }
             } else if (System.nanoTime() - last > 1_500_000_000L) {
@@ -250,18 +264,19 @@ private fun LauncherCarFilamentModel(
             }
         }
     }
+    }
 
     // SceneView otherwise renders one frame with its default camera before onFrame runs.
     SideEffect {
         val initialDrivePos = Float3(
-            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, driveBlend),
-            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, driveBlend),
-            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, driveBlend),
+            lerp(TOP_CAMERA_POS.x, DRIVE_CAMERA_POS.x, composedDriveBlend),
+            lerp(TOP_CAMERA_POS.y, DRIVE_CAMERA_POS.y, composedDriveBlend),
+            lerp(TOP_CAMERA_POS.z, DRIVE_CAMERA_POS.z, composedDriveBlend),
         )
         val initialDriveTarget = Float3(
-            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, driveBlend),
-            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, driveBlend),
-            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, driveBlend),
+            lerp(TOP_CAMERA_TARGET.x, DRIVE_CAMERA_TARGET.x, composedDriveBlend),
+            lerp(TOP_CAMERA_TARGET.y, DRIVE_CAMERA_TARGET.y, composedDriveBlend),
+            lerp(TOP_CAMERA_TARGET.z, DRIVE_CAMERA_TARGET.z, composedDriveBlend),
         )
         cameraNode.worldPosition = Position(
             lerp(initialDrivePos.x, SETTINGS_CAMERA_POS.x, currentTransition),
@@ -301,7 +316,7 @@ private fun LauncherCarFilamentModel(
 
     Box(modifier = modifier) {
         if (modelInstance != null) {
-            key(surfaceEpoch, modelRevision) {
+            key(if (lowPowerPreview) 0 else surfaceEpoch, modelRevision) {
             SceneView(
                 modifier = Modifier
                     .fillMaxSize()
@@ -315,7 +330,7 @@ private fun LauncherCarFilamentModel(
                 modelLoader = modelLoader,
                 cameraNode = cameraNode,
                 cameraManipulator = null,
-                isOpaque = false,
+                isOpaque = lowPowerPreview,
                 autoFitContent = false,
                 onFrame = { frameNs ->
                     val node = modelNodeRef.value ?: return@SceneView
@@ -325,20 +340,12 @@ private fun LauncherCarFilamentModel(
                         ((frameNs - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.05f)
                     }
                     lastFrameNs = frameNs
-                    LauncherCarSurfaceRecovery.onFrameObserved()
+                    if (!lowPowerPreview) {
+                        LauncherCarSurfaceRecovery.onFrameObserved()
+                    }
 
                     val transition = settingsProgress.coerceIn(0f, 1f)
-                    val driveTarget = when {
-                        transition > 0.02f -> 0f
-                        inDriveRef.value -> 1f
-                        steerPreview -> 1f
-                        else -> 0f
-                    }
-                    if (inDriveRef.value && transition < 0.02f) {
-                        driveBlend = 1f
-                    } else {
-                        driveBlend += (driveTarget - driveBlend) * (1f - kotlin.math.exp(-dt * 2.0f))
-                    }
+                    val driveBlend = driveBlendRef.value
 
                     // Continuous camera morph: top/drive ↔ settings (no body yaw while driving).
                     val drivePos = Float3(
@@ -399,7 +406,7 @@ private fun LauncherCarFilamentModel(
                     }
 
                     animationController?.update(rigStateRef.value, dt)
-                    val publishNs = if (transition > 0.5f) 250_000_000L else 100_000_000L
+                    val publishNs = if (lowPowerPreview) 400_000_000L else 100_000_000L
                     if (frameNs - lastAnchorPublishNs >= publishNs) {
                         lastAnchorPublishNs = frameNs
                         val viewport = cameraNode.viewport

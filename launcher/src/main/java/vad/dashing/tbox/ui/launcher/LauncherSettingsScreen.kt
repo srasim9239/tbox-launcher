@@ -27,6 +27,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,10 +38,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import vad.dashing.tbox.BuildConfig
 import vad.dashing.tbox.DonationLinks
 import vad.dashing.tbox.R
+import vad.dashing.tbox.SettingsManager
 import vad.dashing.tbox.ui.rememberWrappedOnClick
+import vad.dashing.tbox.ui.requestHeadUnitReboot
 import vad.dashing.tbox.ui.theme.tboxBody
 import vad.dashing.tbox.ui.theme.tboxButton
 import vad.dashing.tbox.ui.theme.tboxHeadline
@@ -59,6 +63,7 @@ import vad.dashing.tbox.update.formatDownloadSpeed
 @Composable
 fun LauncherSettingsScreen(
     updateViewModel: UpdateViewModel,
+    settingsManager: SettingsManager,
     onOpenInstallPermissionSettings: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -150,6 +155,19 @@ fun LauncherSettingsScreen(
             ),
             style = MaterialTheme.typography.tboxBody,
             color = LauncherColors.TextSecondary,
+        )
+
+        val rebootAction = rememberHuRebootActionEnabled()
+        val rebootScope = rememberCoroutineScope()
+        LauncherHuRebootButton(
+            enabled = rebootAction.enabled,
+            onClick = {
+                rebootAction.onUsed()
+                rebootScope.launch {
+                    settingsManager.markHuRebootedAfterUpdate(currentVersionCode)
+                    requestHeadUnitReboot(context)
+                }
+            },
         )
 
         Box(

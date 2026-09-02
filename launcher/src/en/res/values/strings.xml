@@ -3,8 +3,16 @@
     <string name="launcher_standalone_app_name">Dashing Club Launcher</string>
     <string name="launcher_standalone_about_title">About</string>
     <string name="launcher_standalone_about_body">Dashing Club Launcher %1$s\nHOME launcher for Jetour Dashing.\nOTA.</string>
+    <string name="update_reboot_hu_title">Reboot HU?</string>
+    <string name="update_reboot_hu_body"></string>
+    <string name="update_reboot_hu_later">Later</string>
+    <string name="update_reboot_hu_unavailable">HU reboot is available on Android 9 (mbCAN).</string>
     <string name="launcher_media_card_opacity_title">Player card opacity</string>
     <string name="launcher_media_card_opacity_desc">Lower values let more of the road show through</string>
+    <string name="launcher_media_mini_player_title">Player widget</string>
+    <string name="launcher_media_mini_player_desc">Mini player under the car on the left panel</string>
+    <string name="launcher_dock_icon_scale_title">Bottom bar button size</string>
+    <string name="launcher_dock_icon_scale_desc">Icons grow and spread apart; bar height stays the same</string>
     <string name="launcher_update_install_permission_hint">To install the APK, allow installs from unknown sources for Dashing Club Launcher in Android settings.</string>
     <string name="app_name_monitor">TBox Monitor</string>
     <string name="keyboard_accessibility_description">Track keyboard visibility for floating panels</string>

@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +76,7 @@ fun LauncherLeftPanel(
     val fuelPctRaw by canViewModel.fuelLevelPercentage.collectAsStateWithLifecycle()
     // Filtered % считается только в активной поездке; вне поездки показываем сырой процент.
     val fuelPct = fuelPctFiltered ?: fuelPctRaw
+    val rangeKm by canViewModel.distanceToFuelEmpty.collectAsStateWithLifecycle()
     val voltage by canViewModel.voltage.collectAsStateWithLifecycle()
     val vehicleBody by LauncherVehicleBodyRepository.state.collectAsStateWithLifecycle()
     val adasLive by LauncherAdasRepository.state.collectAsStateWithLifecycle()
@@ -122,10 +124,23 @@ fun LauncherLeftPanel(
     var headlightFrame by remember { mutableStateOf<LauncherHeadlightFrame?>(null) }
 
     // Simulation gear override (hidden settings tab) takes precedence over live gearbox.
-    val activeGear = LauncherDevVehicleState.gearSlotOverride
+    val parsedGear = LauncherDevVehicleState.gearSlotOverride
         ?: resolveActiveGearSlot(gearBoxMode, gearBoxCurrentGear)
+    var latchedGear by remember { mutableStateOf<Char?>(null) }
+    SideEffect {
+        if (parsedGear != null) latchedGear = parsedGear
+    }
+    val activeGear = parsedGear ?: latchedGear
     val inDriveGear = racing || activeGear == 'D'
-    val fuelText = fuelPct?.toInt()?.let { "$it%" } ?: "—"
+    val unitKm = stringResource(R.string.unit_km)
+    var fuelShowsRange by remember {
+        mutableStateOf(LauncherAppConfigStore.fuelShowsRange(context))
+    }
+    val fuelText = if (fuelShowsRange) {
+        rangeKm?.let { "${valueToString(it, 0)} $unitKm" } ?: "—"
+    } else {
+        fuelPct?.toInt()?.let { "$it%" } ?: "—"
+    }
     val speedText = valueToString(effectiveSpeed, 0, default = "0")
     val voltageValue = voltage
     val voltageLow = voltageValue != null && voltageValue < 12f
@@ -198,6 +213,15 @@ fun LauncherLeftPanel(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                val next = !fuelShowsRange
+                                fuelShowsRange = next
+                                LauncherAppConfigStore.setFuelShowsRange(context, next)
+                            },
+                        ),
                     ) {
                         Image(
                             painter = painterResource(R.drawable.ic_launcher_fuel),
@@ -240,18 +264,18 @@ fun LauncherLeftPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "$speedText ${stringResource(R.string.unit_kmh)}",
-                    style = MaterialTheme.typography.tboxCaption,
-                    color = LauncherColors.LeftTextSecondary,
-                    fontSize = 13.sp,
-                )
             if (!racing) {
                 LauncherCruisePresetControl(
                     canViewModel = canViewModel,
                     adas = adas,
                 )
             }
+                Text(
+                    text = "$speedText ${stringResource(R.string.unit_kmh)}",
+                    style = MaterialTheme.typography.tboxCaption,
+                    color = LauncherColors.LeftTextSecondary,
+                    fontSize = 13.sp,
+                )
             }
             if (!tboxConnected && !racing) {
                 Row(
@@ -390,17 +414,24 @@ fun LauncherLeftPanel(
                     LauncherEggRaceControls(modifier = Modifier.fillMaxWidth())
                 }
             } else {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                        ),
-                ) {
-                    LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                val miniPlayerRevision by LauncherAppConfigStore.mediaMiniPlayerRevisionFlow
+                    .collectAsStateWithLifecycle()
+                val miniPlayerVisible = remember(context, miniPlayerRevision) {
+                    LauncherAppConfigStore.mediaMiniPlayerVisible(context)
+                }
+                if (miniPlayerVisible) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {},
+                            ),
+                    ) {
+                        LauncherMediaMiniPlayer(modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
             if (colorPickerVisible) {

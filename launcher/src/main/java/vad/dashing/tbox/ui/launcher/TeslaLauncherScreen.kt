@@ -1,5 +1,6 @@
 package vad.dashing.tbox.ui.launcher
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -288,5 +289,19 @@ fun TeslaLauncherScreen(
                 )
             }
         }
+
+        val currentVersionCode = remember(context) {
+            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                packageInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                packageInfo.versionCode.toLong()
+            }
+        }
+        LauncherHuRebootStartupDialog(
+            settingsManager = settingsManager,
+            currentVersionCode = currentVersionCode,
+        )
     }
 }
